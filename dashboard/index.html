@@ -450,7 +450,6 @@ header {
   flex-shrink: 0;
 }
 .log-count-badge {
-  margin-left: auto;
   font-size: 10px;
   font-weight: 700;
   padding: 2px 8px;
@@ -459,6 +458,90 @@ header {
   color: var(--accent);
   border: 1px solid rgba(79,142,247,.3);
 }
+.log-result-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text3);
+  font-family: var(--mono);
+}
+
+/* ── Log filter bar ────────────────────────────────────────────────────── */
+.log-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.log-filter-input {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: var(--font);
+  outline: none;
+  flex: 1;
+  min-width: 140px;
+  transition: border-color .15s;
+}
+.log-filter-input::placeholder { color: var(--text3); }
+.log-filter-input:focus { border-color: var(--accent); }
+
+.log-filter-select {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--font);
+  outline: none;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.log-filter-select:focus { border-color: var(--accent); }
+.log-filter-select option { background: var(--surface2); }
+
+.btn-live-tail {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.btn-live-tail:hover { background: var(--surface2); }
+.btn-live-tail.active {
+  background: var(--green-bg);
+  border-color: rgba(34,197,94,.4);
+  color: var(--green);
+}
+.btn-live-tail .tail-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity .2s;
+}
+.btn-live-tail.active .tail-dot {
+  opacity: 1;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
 .log-scroll { flex: 1; overflow-y: auto; }
 
 table { width: 100%; border-collapse: collapse; }
@@ -527,10 +610,11 @@ tbody td {
 
 /* Cloud env pills */
 .env { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-sm); white-space: nowrap; }
-.env-aws     { background: var(--orange-bg); color: #fb923c; }
-.env-gcp     { background: var(--accent-bg); color: var(--accent); }
-.env-azure   { background: rgba(96,165,250,.1); color: #60a5fa; }
-.env-on_prem { background: var(--purple-bg); color: var(--purple); }
+.env-aws      { background: var(--orange-bg); color: #fb923c; }
+.env-gcp      { background: var(--accent-bg); color: var(--accent); }
+.env-azure    { background: rgba(96,165,250,.1); color: #60a5fa; }
+.env-on_prem  { background: var(--purple-bg); color: var(--purple); }
+.env-neocloud { background: rgba(45,212,191,.1); color: var(--teal); }
 
 .mono-sm { font-family: var(--mono); font-size: 11px; color: var(--text2); }
 .text-muted { color: var(--text3); }
@@ -708,7 +792,43 @@ code { font-family: var(--mono); font-size: 11px; }
         <span>📋</span>
         <span class="panel-title">Routing Log</span>
         <span class="log-count-badge" id="log-count">0</span>
+        <span class="log-result-count" id="log-result-count"></span>
       </div>
+
+      <!-- Filter bar -->
+      <div class="log-filters">
+        <input  class="log-filter-input"  id="log-search"
+                type="text" placeholder="Search request_id or tenant_id…" />
+        <select class="log-filter-select" id="log-sensitivity">
+          <option value="">All Sensitivity</option>
+          <option value="public">public</option>
+          <option value="internal">internal</option>
+          <option value="sensitive">sensitive</option>
+          <option value="phi">phi</option>
+          <option value="phi_strict">phi_strict</option>
+        </select>
+        <select class="log-filter-select" id="log-cloud-env">
+          <option value="">All Cloud Env</option>
+          <option value="aws">aws</option>
+          <option value="gcp">gcp</option>
+          <option value="on_prem">on_prem</option>
+          <option value="neocloud">neocloud</option>
+        </select>
+        <select class="log-filter-select" id="log-rejected">
+          <option value="">All Status</option>
+          <option value="false">Accepted</option>
+          <option value="true">Rejected</option>
+        </select>
+        <select class="log-filter-select" id="log-limit">
+          <option value="25">25 rows</option>
+          <option value="50" selected>50 rows</option>
+          <option value="100">100 rows</option>
+        </select>
+        <button class="btn-live-tail" id="btn-live-tail" onclick="toggleLiveTail()">
+          <span class="tail-dot"></span>Live Tail
+        </button>
+      </div>
+
       <div class="log-scroll" id="log-scroll">
         <table>
           <thead>
@@ -753,6 +873,8 @@ const state = {
   logStats: null,
   seenIds: new Set(),
   pollErrors: 0,
+  liveTailActive: false,
+  liveTailTimer: null,
 };
 
 const PRESETS = {
@@ -794,6 +916,60 @@ async function fetchJSON(url) {
   return resp.json();
 }
 
+// ── Filter URL builder ────────────────────────────────────────────────────
+
+function buildLogsUrl() {
+  const params = new URLSearchParams();
+  const search      = document.getElementById('log-search')?.value.trim();
+  const sensitivity = document.getElementById('log-sensitivity')?.value;
+  const cloudEnv    = document.getElementById('log-cloud-env')?.value;
+  const rejected    = document.getElementById('log-rejected')?.value;
+  const limit       = document.getElementById('log-limit')?.value || '50';
+
+  if (search)      params.set('search',      search);
+  if (sensitivity) params.set('sensitivity', sensitivity);
+  if (cloudEnv)    params.set('cloud_env',   cloudEnv);
+  if (rejected)    params.set('rejected',    rejected);
+  params.set('limit', limit);
+
+  return '/logs?' + params.toString();
+}
+
+// ── Live Tail ─────────────────────────────────────────────────────────────
+
+function toggleLiveTail() {
+  const btn = document.getElementById('btn-live-tail');
+  state.liveTailActive = !state.liveTailActive;
+
+  if (state.liveTailActive) {
+    btn.classList.add('active');
+    btn.querySelector('.tail-dot').style.opacity = '1';
+    btn.childNodes[1].textContent = ' Live Tail: ON';
+    fetchFilteredLog();
+    state.liveTailTimer = setInterval(fetchFilteredLog, 3000);
+  } else {
+    btn.classList.remove('active');
+    btn.childNodes[1].textContent = ' Live Tail';
+    clearInterval(state.liveTailTimer);
+    state.liveTailTimer = null;
+  }
+}
+
+async function fetchFilteredLog() {
+  try {
+    const logs = await fetchJSON(buildLogsUrl());
+    const entries = logs.entries || [];
+
+    const newEntries = entries.filter(e => !state.seenIds.has(e.request_id));
+    newEntries.forEach(e => state.seenIds.add(e.request_id));
+    state.logEntries = entries;
+
+    renderLog(newEntries.map(e => e.request_id), logs.total, logs.returned);
+  } catch (err) {
+    // silent — live tail errors don't change connection state
+  }
+}
+
 // ── Polling ───────────────────────────────────────────────────────────────
 
 async function poll() {
@@ -801,22 +977,23 @@ async function poll() {
     const [health, metrics, logs, stats] = await Promise.all([
       fetchJSON('/health'),
       fetchJSON('/metrics'),
-      fetchJSON('/logs?limit=100'),
+      fetchJSON(buildLogsUrl()),
       fetchJSON('/logs/stats'),
     ]);
 
-    state.health    = health;
-    state.metrics   = metrics;
-    state.logStats  = stats;
+    state.health   = health;
+    state.metrics  = metrics;
+    state.logStats = stats;
 
-    const newEntries = (logs.entries || []).filter(e => !state.seenIds.has(e.request_id));
+    const entries    = logs.entries || [];
+    const newEntries = entries.filter(e => !state.seenIds.has(e.request_id));
     newEntries.forEach(e => state.seenIds.add(e.request_id));
-    state.logEntries = logs.entries || [];
+    state.logEntries = entries;
 
     state.connected  = true;
     state.pollErrors = 0;
 
-    renderAll(newEntries.map(e => e.request_id));
+    renderAll(newEntries.map(e => e.request_id), logs.total, logs.returned);
   } catch (err) {
     state.pollErrors++;
     if (state.pollErrors >= 2) {
@@ -828,11 +1005,11 @@ async function poll() {
 
 // ── Render dispatcher ─────────────────────────────────────────────────────
 
-function renderAll(newIds = []) {
+function renderAll(newIds = [], total = null, returned = null) {
   renderConnection();
   renderStatCards();
   renderServerCards();
-  renderLog(newIds);
+  renderLog(newIds, total, returned);
 }
 
 // ── Connection indicator ──────────────────────────────────────────────────
@@ -955,12 +1132,21 @@ function renderServerCards() {
 
 // ── Routing log ───────────────────────────────────────────────────────────
 
-function renderLog(newIds = []) {
-  const entries = state.logEntries;
-  const tbody   = document.getElementById('log-tbody');
-  const countEl = document.getElementById('log-count');
+function renderLog(newIds = [], total = null, returned = null) {
+  const entries   = state.logEntries;
+  const tbody     = document.getElementById('log-tbody');
+  const countEl   = document.getElementById('log-count');
+  const resultEl  = document.getElementById('log-result-count');
 
   countEl.textContent = state.logStats ? state.logStats.total : entries.length;
+
+  if (total !== null && returned !== null && total !== returned) {
+    resultEl.textContent = `${returned} of ${total} shown`;
+  } else if (returned !== null) {
+    resultEl.textContent = `${returned} shown`;
+  } else {
+    resultEl.textContent = '';
+  }
 
   if (!entries.length) {
     tbody.innerHTML = `<tr><td colspan="7">
@@ -1098,10 +1284,25 @@ function fmtTime(iso) {
 }
 
 function envIcon(env) {
-  return { aws: '☁', gcp: '🌐', azure: '⬡', on_prem: '🖥' }[env] || '•';
+  return { aws: '☁', gcp: '🌐', azure: '⬡', on_prem: '🖥', neocloud: '✦' }[env] || '•';
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────
+
+// Filter controls — any change triggers an immediate re-fetch
+['log-sensitivity', 'log-cloud-env', 'log-rejected', 'log-limit'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', fetchFilteredLog);
+});
+
+// Search — fetch on Enter or after 400ms debounce
+let searchDebounce = null;
+document.getElementById('log-search')?.addEventListener('input', () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(fetchFilteredLog, 400);
+});
+document.getElementById('log-search')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { clearTimeout(searchDebounce); fetchFilteredLog(); }
+});
 
 poll();
 setInterval(poll, 5000);
