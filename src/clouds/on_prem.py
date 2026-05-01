@@ -28,6 +28,7 @@ from src.clouds.base import (
     AdapterUnavailableError,
     CloudAdapter,
 )
+from src.engine.circuit_breaker import CircuitBreaker, CircuitOpenError
 from src.engine.models import InferenceRequest, ServerStatus
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ class OnPremAdapter(CloudAdapter):
         max_tokens: int = 512,
         connect_retries: int = 2,
         api_key: str | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model_id = model_id
@@ -76,6 +78,7 @@ class OnPremAdapter(CloudAdapter):
         self._api_key = api_key
 
         self._session = self._build_session(connect_retries)
+        self._circuit = circuit_breaker or CircuitBreaker(server_id=server_id)
 
     # ------------------------------------------------------------------
     # CloudAdapter interface
@@ -93,6 +96,17 @@ class OnPremAdapter(CloudAdapter):
         Any extra keys in ``payload`` (temperature, top_p, stop, etc.) are
         forwarded verbatim to vLLM so callers retain full control.
         """
+        try:
+            return self._circuit.call(self._enqueue_once, request)
+        except CircuitOpenError as exc:
+            raise AdapterUnavailableError(
+                f"Circuit open for server '{self._server_id}' — "
+                f"retry after {exc.retry_after:.1f}s",
+                server_id=self._server_id,
+            ) from exc
+
+    def _enqueue_once(self, request: InferenceRequest) -> str:
+        """Single attempt at POSTing to /v1/completions (no circuit logic)."""
         body = self._build_completion_body(request)
         url = f"{self._base_url}/v1/completions"
 
