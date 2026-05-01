@@ -1,565 +1,1112 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Inference Placement Engine — Log Viewer</title>
-  <style>
-    :root {
-      --bg:        #0f1117;
-      --surface:   #1a1d27;
-      --border:    #2a2d3e;
-      --text:      #e2e8f0;
-      --muted:     #8892a4;
-      --accent:    #4f8ef7;
-      --accent-dim:#1e3a6e;
-      --green:     #22c55e;
-      --red:       #ef4444;
-      --orange:    #f97316;
-      --yellow:    #eab308;
-      --purple:    #a78bfa;
-      --teal:      #2dd4bf;
-      --row-hover: #22253a;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Inference Placement Engine — Production Dashboard</title>
+<style>
+/* ── Reset & Variables ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:         #0b0d12;
+  --bg2:        #10131a;
+  --surface:    #161b26;
+  --surface2:   #1d2335;
+  --border:     #252d3d;
+  --border2:    #2e3a50;
+  --text:       #e2e8f0;
+  --text2:      #94a3b8;
+  --text3:      #556070;
+  --accent:     #4f8ef7;
+  --accent-bg:  rgba(79,142,247,.12);
+  --green:      #22c55e;
+  --green-bg:   rgba(34,197,94,.12);
+  --yellow:     #eab308;
+  --yellow-bg:  rgba(234,179,8,.12);
+  --red:        #ef4444;
+  --red-bg:     rgba(239,68,68,.12);
+  --orange:     #f97316;
+  --orange-bg:  rgba(249,115,22,.12);
+  --purple:     #a78bfa;
+  --purple-bg:  rgba(167,139,250,.12);
+  --teal:       #2dd4bf;
+  --font:       -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono:       "SF Mono", "Fira Code", "Consolas", monospace;
+  --radius:     8px;
+  --radius-sm:  5px;
+  --shadow:     0 4px 20px rgba(0,0,0,.5);
+}
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font);
-      font-size: 14px;
-      min-height: 100vh;
-    }
+html, body { height: 100%; }
 
-    /* ── Header ── */
-    header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 14px 24px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    header .logo {
-      width: 28px; height: 28px;
-      background: var(--accent);
-      border-radius: 6px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
-    }
-    header h1 { font-size: 16px; font-weight: 600; color: var(--text); }
-    header .subtitle { font-size: 12px; color: var(--muted); margin-left: auto; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
 
-    /* ── Main layout ── */
-    main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+/* ── Header ────────────────────────────────────────────────────────────── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
 
-    /* ── Stats bar ── */
-    .stats-bar {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-    .stats-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 14px 18px;
-      flex: 1;
-      min-width: 180px;
-    }
-    .stats-card h3 {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      margin-bottom: 10px;
-    }
-    .stat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .stat-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 3px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 500;
-      border: 1px solid transparent;
-    }
-    .stat-chip .count {
-      font-weight: 700;
-      font-size: 13px;
-    }
-    .stat-total {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1;
-    }
-    .stat-total-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.header-logo {
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg, #4f8ef7, #a78bfa);
+  border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
 
-    /* ── Controls ── */
-    .controls {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 14px 16px;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-      margin-bottom: 16px;
-    }
-    .controls input[type="text"],
-    .controls select {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      padding: 7px 12px;
-      font-size: 13px;
-      font-family: var(--font);
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    .controls input[type="text"] { flex: 1; min-width: 200px; }
-    .controls input[type="text"]:focus,
-    .controls select:focus { border-color: var(--accent); }
-    .controls select option { background: var(--surface); }
+.header-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.header-sub   { font-size: 11px; color: var(--text2); }
 
-    .btn {
-      padding: 7px 16px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      font-size: 13px;
-      font-family: var(--font);
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s;
-      white-space: nowrap;
-    }
-    .btn:hover { background: var(--row-hover); }
-    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .btn-primary:hover { background: #3a7ce0; border-color: #3a7ce0; }
-    .btn-live {
-      background: var(--bg);
-      border-color: var(--green);
-      color: var(--green);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .btn-live.active {
-      background: rgba(34,197,94,0.12);
-    }
-    .live-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--green);
-      display: none;
-    }
-    .btn-live.active .live-dot {
-      display: block;
-      animation: pulse 1.2s ease-in-out infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.3; }
-    }
+.header-spacer { flex: 1; }
 
-    .controls-right { display: flex; gap: 8px; margin-left: auto; align-items: center; }
-    .result-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text2);
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: var(--bg2);
+}
+.live-indicator.connected { color: var(--green); border-color: rgba(34,197,94,.3); }
+.live-indicator.error     { color: var(--red);   border-color: rgba(239,68,68,.3); }
 
-    /* ── Table ── */
-    .table-wrap {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    thead th {
-      background: var(--bg);
-      color: var(--muted);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      font-weight: 600;
-      padding: 10px 14px;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-    tbody tr {
-      border-bottom: 1px solid var(--border);
-      transition: background 0.1s;
-    }
-    tbody tr:last-child { border-bottom: none; }
-    tbody tr:hover { background: var(--row-hover); }
-    tbody td {
-      padding: 10px 14px;
-      font-size: 13px;
-      color: var(--text);
-      vertical-align: middle;
-    }
-    .mono { font-family: "SF Mono", "Fira Code", "Consolas", monospace; font-size: 12px; }
-    .text-muted { color: var(--muted); }
+.live-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text3);
+  flex-shrink: 0;
+}
+.live-indicator.connected .live-dot {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+.live-indicator.error .live-dot { background: var(--red); }
 
-    /* Empty / loading states */
-    .table-empty {
-      padding: 48px 24px;
-      text-align: center;
-      color: var(--muted);
-    }
-    .table-empty .icon { font-size: 32px; margin-bottom: 8px; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .4; }
+}
 
-    /* ── Sensitivity badges ── */
-    .badge {
-      display: inline-block;
-      padding: 2px 9px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.03em;
-    }
-    .badge-public       { background: rgba(34,197,94,0.15);  color: var(--green);  border: 1px solid rgba(34,197,94,0.3); }
-    .badge-internal     { background: rgba(79,142,247,0.15); color: var(--accent); border: 1px solid rgba(79,142,247,0.3); }
-    .badge-sensitive    { background: rgba(249,115,22,0.15); color: var(--orange); border: 1px solid rgba(249,115,22,0.3); }
-    .badge-phi          { background: rgba(239,68,68,0.15);  color: var(--red);    border: 1px solid rgba(239,68,68,0.3); }
-    .badge-phi_strict   { background: rgba(239,68,68,0.25);  color: #ff8080;       border: 1px solid rgba(239,68,68,0.5); }
+.header-time { font-size: 11px; color: var(--text3); font-family: var(--mono); }
 
-    /* ── Cloud env pills ── */
-    .env-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 9px;
-      border-radius: 5px;
-      font-size: 11px;
-      font-weight: 600;
-    }
-    .env-aws     { background: rgba(249,115,22,0.12); color: #fb923c; }
-    .env-gcp     { background: rgba(79,142,247,0.12); color: var(--accent); }
-    .env-azure   { background: rgba(59,130,246,0.12); color: #60a5fa; }
-    .env-on_prem { background: rgba(167,139,250,0.12); color: var(--purple); }
+/* ── Main content ──────────────────────────────────────────────────────── */
+.page { flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
 
-    /* ── Status indicator ── */
-    .status-ok       { color: var(--green); font-weight: 600; }
-    .status-rejected { color: var(--red);   font-weight: 600; }
+/* ── Section labels ────────────────────────────────────────────────────── */
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 10px;
+}
 
-    /* ── Latency ── */
-    .latency-fast   { color: var(--green); }
-    .latency-medium { color: var(--yellow); }
-    .latency-slow   { color: var(--red); }
+/* ── Stat cards ────────────────────────────────────────────────────────── */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
 
-    /* ── Stat chip colour presets ── */
-    .chip-public     { background: rgba(34,197,94,0.1);  border-color: rgba(34,197,94,0.25);  color: var(--green);  }
-    .chip-internal   { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.25); color: var(--accent); }
-    .chip-sensitive  { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.25); color: var(--orange); }
-    .chip-phi        { background: rgba(239,68,68,0.1);  border-color: rgba(239,68,68,0.25);  color: var(--red);    }
-    .chip-phi_strict { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.4);   color: #ff8080;       }
-    .chip-aws        { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.25); color: #fb923c;       }
-    .chip-gcp        { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.25); color: var(--accent); }
-    .chip-azure      { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.25); color: #60a5fa;       }
-    .chip-on_prem    { background: rgba(167,139,250,0.1);border-color: rgba(167,139,250,0.25);color: var(--purple); }
-    .chip-rejected   { background: rgba(239,68,68,0.1);  border-color: rgba(239,68,68,0.25);  color: var(--red);    }
-    .chip-total      { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.25); color: var(--accent); }
-  </style>
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--card-accent, var(--border2));
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.stat-card.green  { --card-accent: var(--green); }
+.stat-card.blue   { --card-accent: var(--accent); }
+.stat-card.orange { --card-accent: var(--orange); }
+.stat-card.purple { --card-accent: var(--purple); }
+
+.stat-icon { font-size: 18px; line-height: 1; margin-bottom: 2px; }
+
+.stat-value {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  transition: color .3s;
+}
+.stat-card.green  .stat-value { color: var(--green); }
+.stat-card.orange .stat-value { color: var(--orange); }
+
+.stat-label { font-size: 12px; color: var(--text2); }
+.stat-sub   { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* ── Server health cards ───────────────────────────────────────────────── */
+.server-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.server-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: border-color .2s;
+}
+.server-card.healthy   { border-left: 3px solid var(--green); }
+.server-card.degraded  { border-left: 3px solid var(--yellow); }
+.server-card.unavailable { border-left: 3px solid var(--red); }
+
+.server-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.server-status-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.healthy   .server-status-dot { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+.degraded  .server-status-dot { background: var(--yellow); }
+.unavailable .server-status-dot { background: var(--red); }
+
+.server-info { flex: 1; min-width: 0; }
+.server-id   { font-size: 13px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+.server-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+.server-status-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.status-badge-healthy    { background: var(--green-bg);  color: var(--green);  border: 1px solid rgba(34,197,94,.3); }
+.status-badge-degraded   { background: var(--yellow-bg); color: var(--yellow); border: 1px solid rgba(234,179,8,.3); }
+.status-badge-unavailable{ background: var(--red-bg);    color: var(--red);    border: 1px solid rgba(239,68,68,.3); }
+.status-badge-draining   { background: var(--orange-bg); color: var(--orange); border: 1px solid rgba(249,115,22,.3); }
+
+.server-bars { display: flex; flex-direction: column; gap: 9px; }
+
+.bar-row { display: flex; flex-direction: column; gap: 4px; }
+
+.bar-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.bar-label { font-size: 11px; color: var(--text2); }
+.bar-value { font-size: 11px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+
+.bar-track {
+  height: 5px;
+  background: var(--bg2);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width .6s ease, background-color .3s;
+  min-width: 2px;
+}
+.bar-fill.load-low    { background: var(--green); }
+.bar-fill.load-medium { background: var(--yellow); }
+.bar-fill.load-high   { background: var(--red); }
+.bar-fill.latency-low    { background: var(--teal); }
+.bar-fill.latency-medium { background: var(--accent); }
+.bar-fill.latency-high   { background: var(--orange); }
+
+.server-chips {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  background: var(--bg2);
+}
+.chip.aws     { color: #fb923c; border-color: rgba(249,115,22,.3); background: var(--orange-bg); }
+.chip.gcp     { color: var(--accent); border-color: rgba(79,142,247,.3); background: var(--accent-bg); }
+.chip.azure   { color: #60a5fa; border-color: rgba(96,165,250,.3); background: rgba(96,165,250,.1); }
+.chip.on_prem { color: var(--purple); border-color: rgba(167,139,250,.3); background: var(--purple-bg); }
+
+.server-placeholder {
+  background: var(--surface);
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text3);
+  font-size: 12px;
+}
+
+/* ── Bottom split ──────────────────────────────────────────────────────── */
+.bottom-split {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  min-height: 400px;
+}
+
+/* ── Test panel ────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.panel-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.panel-body  { flex: 1; padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+
+.test-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.test-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border2);
+  background: var(--bg2);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font);
+  transition: background .15s, border-color .15s, transform .1s;
+  text-align: left;
+}
+.test-btn:hover  { background: var(--surface2); transform: translateY(-1px); }
+.test-btn:active { transform: translateY(0); }
+
+.test-btn-label {
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.test-btn-sub   { font-size: 10px; color: var(--text3); }
+
+.test-btn.public    { border-color: rgba(34,197,94,.3);   }
+.test-btn.internal  { border-color: rgba(79,142,247,.3);  }
+.test-btn.phi       { border-color: rgba(249,115,22,.3);  }
+.test-btn.phi-strict { border-color: rgba(239,68,68,.35); }
+
+.test-btn.public:hover    { background: rgba(34,197,94,.08);  }
+.test-btn.internal:hover  { background: rgba(79,142,247,.08); }
+.test-btn.phi:hover       { background: rgba(249,115,22,.08); }
+.test-btn.phi-strict:hover{ background: rgba(239,68,68,.08);  }
+
+.test-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2px 0;
+}
+
+.custom-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.custom-area label { font-size: 11px; color: var(--text2); }
+.custom-area textarea {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 80px;
+  outline: none;
+  transition: border-color .15s;
+  line-height: 1.5;
+}
+.custom-area textarea:focus { border-color: var(--accent); }
+
+.send-custom-btn {
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+  align-self: flex-end;
+}
+.send-custom-btn:hover    { background: #3a7ce0; }
+.send-custom-btn:disabled { opacity: .5; cursor: default; }
+
+/* Response preview */
+.response-preview {
+  margin-top: 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border2);
+  overflow: hidden;
+}
+.response-preview-header {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.response-preview-header.ok      { background: var(--green-bg);  color: var(--green); }
+.response-preview-header.error   { background: var(--red-bg);    color: var(--red);   }
+.response-preview-header.pending { background: var(--accent-bg); color: var(--accent); }
+.response-body {
+  background: var(--bg);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text2);
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+/* ── Routing log ───────────────────────────────────────────────────────── */
+.log-panel-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.log-count-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid rgba(79,142,247,.3);
+}
+.log-scroll { flex: 1; overflow-y: auto; }
+
+table { width: 100%; border-collapse: collapse; }
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg2);
+  padding: 9px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text3);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surface2); }
+tbody tr.new-entry { animation: flash .6s ease-out; }
+
+@keyframes flash {
+  0%   { background: rgba(79,142,247,.18); }
+  100% { background: transparent; }
+}
+
+tbody td {
+  padding: 9px 12px;
+  font-size: 12px;
+  color: var(--text);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.log-empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text3);
+  font-size: 12px;
+}
+.log-empty .empty-icon { font-size: 28px; margin-bottom: 10px; }
+
+/* Sensitivity badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge-public     { background: var(--green-bg);   color: var(--green);   border: 1px solid rgba(34,197,94,.3); }
+.badge-internal   { background: var(--accent-bg);  color: var(--accent);  border: 1px solid rgba(79,142,247,.3); }
+.badge-sensitive  { background: var(--orange-bg);  color: var(--orange);  border: 1px solid rgba(249,115,22,.3); }
+.badge-phi        { background: var(--red-bg);     color: var(--red);     border: 1px solid rgba(239,68,68,.3); }
+.badge-phi_strict { background: rgba(239,68,68,.22); color: #ff8080; border: 1px solid rgba(239,68,68,.5); }
+
+/* Cloud env pills */
+.env { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-sm); white-space: nowrap; }
+.env-aws     { background: var(--orange-bg); color: #fb923c; }
+.env-gcp     { background: var(--accent-bg); color: var(--accent); }
+.env-azure   { background: rgba(96,165,250,.1); color: #60a5fa; }
+.env-on_prem { background: var(--purple-bg); color: var(--purple); }
+
+.mono-sm { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.text-muted { color: var(--text3); }
+
+.status-ok  { color: var(--green); font-weight: 600; font-size: 12px; }
+.status-rej { color: var(--red);   font-weight: 600; font-size: 12px; }
+
+/* ── Toast ─────────────────────────────────────────────────────────────── */
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  pointer-events: none;
+}
+.toast {
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  animation: slide-in .2s ease;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+}
+.toast.ok    { border-left: 3px solid var(--green);  color: var(--green); }
+.toast.error { border-left: 3px solid var(--red);    color: var(--red); }
+.toast.info  { border-left: 3px solid var(--accent); color: var(--accent); }
+
+@keyframes slide-in {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3d4a60; }
+
+code { font-family: var(--mono); font-size: 11px; }
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .bottom-split { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .stat-row { grid-template-columns: 1fr 1fr; }
+  .page { padding: 12px; gap: 12px; }
+}
+</style>
 </head>
 <body>
 
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
 <header>
-  <div class="logo">⚡</div>
-  <h1>Inference Placement Engine</h1>
-  <span class="subtitle">HIPAA-aware routing log viewer</span>
+  <div class="header-logo">⚡</div>
+  <div>
+    <div class="header-title">Inference Placement Engine</div>
+    <div class="header-sub">Production Support Dashboard</div>
+  </div>
+  <div class="header-spacer"></div>
+  <div class="live-indicator" id="live-indicator">
+    <span class="live-dot"></span>
+    <span id="live-label">Connecting…</span>
+  </div>
+  <div class="header-time" id="clock"></div>
 </header>
 
-<main>
+<!-- ── Page body ──────────────────────────────────────────────────────── -->
+<div class="page">
 
-  <!-- Stats bar -->
-  <div class="stats-bar" id="stats-bar">
-    <div class="stats-card">
-      <h3>Total Decisions</h3>
-      <div class="stat-total" id="stat-total">—</div>
-      <div class="stat-total-label" id="stat-rejected-label">— rejected</div>
-    </div>
-    <div class="stats-card">
-      <h3>By Sensitivity</h3>
-      <div class="stat-chips" id="chips-sensitivity"></div>
-    </div>
-    <div class="stats-card">
-      <h3>By Cloud Env</h3>
-      <div class="stat-chips" id="chips-cloud-env"></div>
-    </div>
-  </div>
-
-  <!-- Controls -->
-  <div class="controls">
-    <input type="text" id="search-input" placeholder="Search request_id or tenant_id…" />
-
-    <select id="filter-sensitivity">
-      <option value="">All Sensitivity</option>
-      <option value="public">public</option>
-      <option value="internal">internal</option>
-      <option value="sensitive">sensitive</option>
-      <option value="phi">phi</option>
-      <option value="phi_strict">phi_strict</option>
-    </select>
-
-    <select id="filter-cloud-env">
-      <option value="">All Cloud Env</option>
-      <option value="aws">aws</option>
-      <option value="gcp">gcp</option>
-      <option value="azure">azure</option>
-      <option value="on_prem">on_prem</option>
-    </select>
-
-    <select id="filter-rejected">
-      <option value="">All Status</option>
-      <option value="false">Accepted</option>
-      <option value="true">Rejected</option>
-    </select>
-
-    <select id="filter-limit">
-      <option value="25">25 rows</option>
-      <option value="50" selected>50 rows</option>
-      <option value="100">100 rows</option>
-      <option value="250">250 rows</option>
-      <option value="500">500 rows</option>
-    </select>
-
-    <div class="controls-right">
-      <span class="result-count" id="result-count"></span>
-      <button class="btn btn-primary" id="btn-fetch">Fetch</button>
-      <button class="btn btn-live" id="btn-live-tail">
-        <span class="live-dot"></span>Live Tail
-      </button>
+  <!-- Stat cards -->
+  <div>
+    <div class="section-label">Overview</div>
+    <div class="stat-row">
+      <div class="stat-card green">
+        <div class="stat-icon">🖥</div>
+        <div class="stat-value" id="stat-healthy">—</div>
+        <div class="stat-label">Healthy Servers</div>
+        <div class="stat-sub" id="stat-total-servers">of — registered</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon">↗</div>
+        <div class="stat-value" id="stat-routed">—</div>
+        <div class="stat-label">Requests Routed</div>
+        <div class="stat-sub" id="stat-rejected-sub">— rejected</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="stat-icon">🔒</div>
+        <div class="stat-value" id="stat-phi">—</div>
+        <div class="stat-label">PHI Requests</div>
+        <div class="stat-sub" id="stat-phi-sub">phi + phi_strict</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="stat-icon">⚡</div>
+        <div class="stat-value" id="stat-latency">—</div>
+        <div class="stat-label">Avg Routing Time</div>
+        <div class="stat-sub">across recent decisions</div>
+      </div>
     </div>
   </div>
 
-  <!-- Log table -->
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Timestamp</th>
-          <th>Request ID</th>
-          <th>Tenant</th>
-          <th>Sensitivity</th>
-          <th>Server</th>
-          <th>Cloud Env</th>
-          <th>Latency</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="log-tbody">
-        <tr><td colspan="8">
-          <div class="table-empty">
-            <div class="icon">📋</div>
-            <div>No log entries yet. Send a request to <code>POST /route</code> to see routing decisions here.</div>
-          </div>
-        </td></tr>
-      </tbody>
-    </table>
+  <!-- Server health cards -->
+  <div>
+    <div class="section-label">Server Health</div>
+    <div class="server-grid" id="server-grid">
+      <div class="server-placeholder">Waiting for first health poll…</div>
+    </div>
   </div>
 
-</main>
+  <!-- Bottom split: test panel + routing log -->
+  <div class="bottom-split">
+
+    <!-- Test requests panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>🧪</span>
+        <span class="panel-title">Send Test Request</span>
+      </div>
+      <div class="panel-body">
+        <div class="test-grid">
+          <button class="test-btn public" onclick="sendPreset('public')">
+            <span class="test-btn-label">🟢 Public</span>
+            <span class="test-btn-sub">least_loaded · no BAA</span>
+          </button>
+          <button class="test-btn internal" onclick="sendPreset('internal')">
+            <span class="test-btn-label">🔵 Internal</span>
+            <span class="test-btn-sub">round_robin · internal</span>
+          </button>
+          <button class="test-btn phi" onclick="sendPreset('phi')">
+            <span class="test-btn-label">🟠 PHI</span>
+            <span class="test-btn-sub">compliance_first · BAA</span>
+          </button>
+          <button class="test-btn phi-strict" onclick="sendPreset('phi_strict')">
+            <span class="test-btn-label">🔴 PHI Strict</span>
+            <span class="test-btn-sub">on-prem only · 42 CFR</span>
+          </button>
+        </div>
+
+        <hr class="test-divider" />
+
+        <div class="custom-area">
+          <label>Custom JSON body</label>
+          <textarea id="custom-json" spellcheck="false">{
+  "model_id": "tinyllama:latest",
+  "payload": {"prompt": "Summarise note"},
+  "tenant_id": "hospital_A",
+  "data_sensitivity": "internal",
+  "strategy": "compliance_first"
+}</textarea>
+          <button class="send-custom-btn" id="send-custom-btn" onclick="sendCustom()">Send →</button>
+        </div>
+
+        <div class="response-preview" id="response-preview" style="display:none">
+          <div class="response-preview-header" id="response-header"></div>
+          <pre class="response-body" id="response-body"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Routing log -->
+    <div class="panel">
+      <div class="log-panel-header">
+        <span>📋</span>
+        <span class="panel-title">Routing Log</span>
+        <span class="log-count-badge" id="log-count">0</span>
+      </div>
+      <div class="log-scroll" id="log-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Tenant</th>
+              <th>Sensitivity</th>
+              <th>Server</th>
+              <th>Cloud Env</th>
+              <th>Latency</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="log-tbody">
+            <tr><td colspan="7">
+              <div class="log-empty">
+                <div class="empty-icon">📭</div>
+                Send a request via the test panel or<br>
+                call <code>POST /route</code> to see routing decisions.
+              </div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast-container"></div>
 
 <script>
-  let liveTailTimer = null;
-  let liveTailActive = false;
+'use strict';
 
-  // ── Query builders ──────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────
 
-  function buildLogsUrl() {
-    const params = new URLSearchParams();
-    const search = document.getElementById('search-input').value.trim();
-    const sensitivity = document.getElementById('filter-sensitivity').value;
-    const cloudEnv = document.getElementById('filter-cloud-env').value;
-    const rejected = document.getElementById('filter-rejected').value;
-    const limit = document.getElementById('filter-limit').value;
+const state = {
+  connected: false,
+  health: null,
+  metrics: null,
+  logEntries: [],
+  logStats: null,
+  seenIds: new Set(),
+  pollErrors: 0,
+};
 
-    if (search)      params.set('search', search);
-    if (sensitivity) params.set('sensitivity', sensitivity);
-    if (cloudEnv)    params.set('cloud_env', cloudEnv);
-    if (rejected)    params.set('rejected', rejected);
-    params.set('limit', limit);
+const PRESETS = {
+  public: {
+    model_id: 'tinyllama:latest',
+    payload: { prompt: 'What is the recommended first-line treatment for type 2 diabetes?' },
+    tenant_id: 'demo_tenant',
+    data_sensitivity: 'public',
+    strategy: 'least_loaded',
+  },
+  internal: {
+    model_id: 'tinyllama:latest',
+    payload: { prompt: 'Summarise the discharge note structure.' },
+    tenant_id: 'demo_tenant',
+    data_sensitivity: 'internal',
+    strategy: 'round_robin',
+  },
+  phi: {
+    model_id: 'tinyllama:latest',
+    payload: { prompt: 'Generate a visit summary.' },
+    tenant_id: 'hospital_A',
+    data_sensitivity: 'phi',
+    strategy: 'compliance_first',
+  },
+  phi_strict: {
+    model_id: 'tinyllama:latest',
+    payload: { prompt: 'Process substance use assessment.' },
+    tenant_id: 'hospital_A',
+    data_sensitivity: 'phi_strict',
+    strategy: 'compliance_first',
+  },
+};
 
-    return '/logs?' + params.toString();
-  }
+// ── Fetch helpers ─────────────────────────────────────────────────────────
 
-  // ── Data fetching ───────────────────────────────────────────────────────
+async function fetchJSON(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} from ${url}`);
+  return resp.json();
+}
 
-  async function fetchLogs() {
-    try {
-      const resp = await fetch(buildLogsUrl());
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      renderTable(data.entries, data.total, data.returned);
-    } catch (err) {
-      console.error('fetchLogs error:', err);
+// ── Polling ───────────────────────────────────────────────────────────────
+
+async function poll() {
+  try {
+    const [health, metrics, logs, stats] = await Promise.all([
+      fetchJSON('/health'),
+      fetchJSON('/metrics'),
+      fetchJSON('/logs?limit=100'),
+      fetchJSON('/logs/stats'),
+    ]);
+
+    state.health    = health;
+    state.metrics   = metrics;
+    state.logStats  = stats;
+
+    const newEntries = (logs.entries || []).filter(e => !state.seenIds.has(e.request_id));
+    newEntries.forEach(e => state.seenIds.add(e.request_id));
+    state.logEntries = logs.entries || [];
+
+    state.connected  = true;
+    state.pollErrors = 0;
+
+    renderAll(newEntries.map(e => e.request_id));
+  } catch (err) {
+    state.pollErrors++;
+    if (state.pollErrors >= 2) {
+      state.connected = false;
+      renderConnection();
     }
   }
+}
 
-  async function fetchStats() {
-    try {
-      const resp = await fetch('/logs/stats');
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      renderStats(data);
-    } catch (err) {
-      console.error('fetchStats error:', err);
-    }
+// ── Render dispatcher ─────────────────────────────────────────────────────
+
+function renderAll(newIds = []) {
+  renderConnection();
+  renderStatCards();
+  renderServerCards();
+  renderLog(newIds);
+}
+
+// ── Connection indicator ──────────────────────────────────────────────────
+
+function renderConnection() {
+  const el = document.getElementById('live-indicator');
+  const lbl = document.getElementById('live-label');
+  if (state.connected) {
+    el.className  = 'live-indicator connected';
+    lbl.textContent = 'Live · 5s';
+  } else {
+    el.className  = 'live-indicator error';
+    lbl.textContent = 'Disconnected';
+  }
+}
+
+// ── Stat cards ────────────────────────────────────────────────────────────
+
+function renderStatCards() {
+  // Healthy servers
+  if (state.health) {
+    document.getElementById('stat-healthy').textContent  = state.health.healthy_server_count;
+    document.getElementById('stat-total-servers').textContent =
+      `of ${state.health.total_server_count} registered`;
   }
 
-  async function refreshAll() {
-    await Promise.all([fetchLogs(), fetchStats()]);
+  if (state.logStats) {
+    const s = state.logStats;
+    const phi = (s.by_sensitivity.phi || 0) + (s.by_sensitivity.phi_strict || 0);
+    const routed = s.total - s.rejected_count;
+
+    document.getElementById('stat-routed').textContent = routed;
+    document.getElementById('stat-rejected-sub').textContent =
+      `${s.rejected_count} rejected`;
+    document.getElementById('stat-phi').textContent = phi;
+    document.getElementById('stat-phi-sub').textContent =
+      `phi: ${s.by_sensitivity.phi||0}  strict: ${s.by_sensitivity.phi_strict||0}`;
   }
 
-  // ── Renderers ───────────────────────────────────────────────────────────
+  // Avg routing latency from recent log entries
+  const entries = state.logEntries.slice(0, 20);
+  if (entries.length > 0) {
+    const avg = entries.reduce((s, e) => s + e.routing_latency_ms, 0) / entries.length;
+    document.getElementById('stat-latency').textContent =
+      avg < 1 ? avg.toFixed(3) + ' ms' : avg.toFixed(2) + ' ms';
+  }
+}
 
-  function renderStats(data) {
-    document.getElementById('stat-total').textContent = data.total;
-    document.getElementById('stat-rejected-label').textContent =
-      `${data.rejected_count} rejected`;
+// ── Server health cards ───────────────────────────────────────────────────
 
-    const sensitivityOrder = ['public', 'internal', 'sensitive', 'phi', 'phi_strict'];
-    const sensEl = document.getElementById('chips-sensitivity');
-    sensEl.innerHTML = '';
-    sensitivityOrder.forEach(key => {
-      const n = data.by_sensitivity[key];
-      if (!n) return;
-      sensEl.insertAdjacentHTML('beforeend',
-        `<span class="stat-chip chip-${key}"><span class="count">${n}</span>${key}</span>`);
-    });
-    if (!sensEl.children.length) sensEl.innerHTML = '<span class="text-muted">—</span>';
+function renderServerCards() {
+  if (!state.metrics) return;
+  const servers = state.metrics.servers;
+  const grid    = document.getElementById('server-grid');
 
-    const envOrder = ['aws', 'gcp', 'azure', 'on_prem'];
-    const envEl = document.getElementById('chips-cloud-env');
-    envEl.innerHTML = '';
-    envOrder.forEach(key => {
-      const n = data.by_cloud_env[key];
-      if (!n) return;
-      envEl.insertAdjacentHTML('beforeend',
-        `<span class="stat-chip chip-${key}"><span class="count">${n}</span>${key}</span>`);
-    });
-    if (!envEl.children.length) envEl.innerHTML = '<span class="text-muted">—</span>';
+  if (!servers.length) {
+    grid.innerHTML = '<div class="server-placeholder">No servers registered.</div>';
+    return;
   }
 
-  function renderTable(entries, total, returned) {
-    const tbody = document.getElementById('log-tbody');
-    const countEl = document.getElementById('result-count');
+  grid.innerHTML = servers.map(s => {
+    const loadPct  = Math.round((s.current_load || 0) * 100);
+    const maxLat   = 1000; // ms ceiling for bar scaling
+    const latPct   = Math.min(100, Math.round(((s.avg_latency_ms || 0) / maxLat) * 100));
 
-    if (!entries || entries.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8">
-        <div class="table-empty">
-          <div class="icon">🔍</div>
-          <div>No entries match the current filters.</div>
+    const loadClass =
+      loadPct < 50  ? 'load-low' :
+      loadPct < 80  ? 'load-medium' : 'load-high';
+    const latClass =
+      (s.avg_latency_ms || 0) < 200  ? 'latency-low' :
+      (s.avg_latency_ms || 0) < 600  ? 'latency-medium' : 'latency-high';
+
+    const badgeClass = `status-badge-${s.status}`;
+    const cardClass  = s.status;
+
+    const gpuInfo = s.gpu_count > 0
+      ? `${s.gpu_count}× ${s.gpu_type || 'GPU'}`
+      : 'CPU only';
+
+    return `
+    <div class="server-card ${cardClass}">
+      <div class="server-header">
+        <span class="server-status-dot"></span>
+        <div class="server-info">
+          <div class="server-id">${esc(s.server_id)}</div>
+          <div class="server-meta">${esc(s.region)} · ${gpuInfo}</div>
         </div>
-      </td></tr>`;
-      countEl.textContent = '';
-      return;
-    }
+        <span class="server-status-badge ${badgeClass}">${s.status}</span>
+      </div>
 
-    countEl.textContent = `${returned} of ${total} entries`;
+      <div class="server-bars">
+        <div class="bar-row">
+          <div class="bar-label-row">
+            <span class="bar-label">Load</span>
+            <span class="bar-value">${loadPct}%</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill ${loadClass}" style="width:${loadPct}%"></div>
+          </div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label-row">
+            <span class="bar-label">Avg Latency</span>
+            <span class="bar-value">${(s.avg_latency_ms||0).toFixed(1)} ms</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill ${latClass}" style="width:${latPct}%"></div>
+          </div>
+        </div>
+      </div>
 
-    tbody.innerHTML = entries.map(e => {
-      const ts = formatTimestamp(e.timestamp);
-      const reqId = `<span class="mono text-muted" title="${e.request_id}">${e.request_id.slice(0, 8)}…</span>`;
-      const sensBadge = `<span class="badge badge-${e.data_sensitivity}">${e.data_sensitivity}</span>`;
-      const server = e.selected_server_id
-        ? `<span class="mono">${e.selected_server_id}</span>`
-        : '<span class="text-muted">—</span>';
-      const envPill = e.cloud_env
-        ? `<span class="env-pill env-${e.cloud_env}">${envIcon(e.cloud_env)} ${e.cloud_env}</span>`
-        : '<span class="text-muted">—</span>';
-      const latency = latencyCell(e.routing_latency_ms);
-      const statusCell = e.rejected
-        ? `<span class="status-rejected" title="${e.rejection_reason || ''}">✗ Rejected</span>`
-        : `<span class="status-ok">✓ Routed</span>`;
+      <div class="server-chips">
+        <span class="chip ${s.cloud_env}">${envIcon(s.cloud_env)} ${s.cloud_env}</span>
+        <span class="chip">$${(s.cost_per_token||0).toFixed(4)}/1K tok</span>
+        ${s.gpu_count > 0 ? `<span class="chip">GPU ×${s.gpu_count}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
 
-      return `<tr>
-        <td class="mono text-muted">${ts}</td>
-        <td>${reqId}</td>
-        <td>${escapeHtml(e.tenant_id)}</td>
-        <td>${sensbadge(e.data_sensitivity)}</td>
-        <td>${server}</td>
-        <td>${envPill}</td>
-        <td>${latency}</td>
-        <td>${statusCell}</td>
-      </tr>`;
-    }).join('');
+// ── Routing log ───────────────────────────────────────────────────────────
+
+function renderLog(newIds = []) {
+  const entries = state.logEntries;
+  const tbody   = document.getElementById('log-tbody');
+  const countEl = document.getElementById('log-count');
+
+  countEl.textContent = state.logStats ? state.logStats.total : entries.length;
+
+  if (!entries.length) {
+    tbody.innerHTML = `<tr><td colspan="7">
+      <div class="log-empty">
+        <div class="empty-icon">📭</div>
+        Send a request via the test panel or<br>
+        call <code>POST /route</code> to see routing decisions.
+      </div>
+    </td></tr>`;
+    return;
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────
+  const newSet = new Set(newIds);
 
-  function sensbadge(s) {
-    return `<span class="badge badge-${s}">${s}</span>`;
+  tbody.innerHTML = entries.map(e => {
+    const isNew = newSet.has(e.request_id);
+    const time  = fmtTime(e.timestamp);
+    const env   = e.cloud_env
+      ? `<span class="env env-${e.cloud_env}">${envIcon(e.cloud_env)} ${e.cloud_env}</span>`
+      : '<span class="text-muted">—</span>';
+    const server = e.selected_server_id
+      ? `<code>${esc(e.selected_server_id)}</code>`
+      : '<span class="text-muted">—</span>';
+    const latMs = e.routing_latency_ms;
+    const latCls = latMs < 1 ? 'status-ok' : latMs < 10 ? '' : 'status-rej';
+    const status = e.rejected
+      ? `<span class="status-rej" title="${esc(e.rejection_reason||'')}">✗ Rejected</span>`
+      : `<span class="status-ok">✓ Routed</span>`;
+
+    return `<tr class="${isNew ? 'new-entry' : ''}">
+      <td class="mono-sm">${time}</td>
+      <td>${esc(e.tenant_id)}</td>
+      <td><span class="badge badge-${e.data_sensitivity}">${e.data_sensitivity}</span></td>
+      <td>${server}</td>
+      <td>${env}</td>
+      <td class="mono-sm ${latCls}">${latMs.toFixed(3)} ms</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Test request handlers ─────────────────────────────────────────────────
+
+async function sendPreset(name) {
+  const body = PRESETS[name];
+  if (!body) return;
+  await sendRoute(body, name);
+}
+
+async function sendCustom() {
+  const btn  = document.getElementById('send-custom-btn');
+  const raw  = document.getElementById('custom-json').value.trim();
+  let body;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    showResponse('error', 'JSON parse error', raw);
+    toast('Invalid JSON', 'error');
+    return;
   }
+  btn.disabled = true;
+  await sendRoute(body, 'custom');
+  btn.disabled = false;
+}
 
-  function envIcon(env) {
-    return { aws: '☁', gcp: '🌐', azure: '⬡', on_prem: '🖥' }[env] || '';
-  }
-
-  function latencyCell(ms) {
-    const cls = ms < 1 ? 'latency-fast' : ms < 10 ? 'latency-medium' : 'latency-slow';
-    return `<span class="${cls}">${ms.toFixed(2)} ms</span>`;
-  }
-
-  function formatTimestamp(iso) {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        + ' ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    } catch { return iso; }
-  }
-
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  // ── Live Tail ────────────────────────────────────────────────────────────
-
-  const btnLive = document.getElementById('btn-live-tail');
-
-  btnLive.addEventListener('click', () => {
-    liveTailActive = !liveTailActive;
-    if (liveTailActive) {
-      btnLive.classList.add('active');
-      btnLive.childNodes[1].textContent = 'Live Tail: ON';
-      liveTailTimer = setInterval(refreshAll, 3000);
-      refreshAll();
+async function sendRoute(body, label) {
+  showResponse('pending', `Sending ${label}…`, '');
+  try {
+    const resp = await fetch('/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      const server = data.selected_server?.server_id || '—';
+      const env    = data.selected_server?.cloud_env  || '—';
+      showResponse('ok',
+        `✓ Routed → ${server} (${env})  ${data.routing_latency_ms?.toFixed(3)} ms`,
+        JSON.stringify(data, null, 2));
+      toast(`Routed to ${server}`, 'ok');
     } else {
-      btnLive.classList.remove('active');
-      btnLive.childNodes[1].textContent = 'Live Tail';
-      clearInterval(liveTailTimer);
-      liveTailTimer = null;
+      showResponse('error',
+        `✗ ${resp.status} — ${data.detail || 'Rejected'}`,
+        JSON.stringify(data, null, 2));
+      toast(`Rejected: ${data.detail || resp.status}`, 'error');
     }
-  });
+    // Refresh log immediately
+    poll();
+  } catch (err) {
+    showResponse('error', `Network error: ${err.message}`, '');
+    toast('Network error', 'error');
+  }
+}
 
-  // ── Manual fetch button ──────────────────────────────────────────────────
+function showResponse(type, header, body) {
+  const el  = document.getElementById('response-preview');
+  const hEl = document.getElementById('response-header');
+  const bEl = document.getElementById('response-body');
+  el.style.display = '';
+  hEl.className    = `response-preview-header ${type}`;
+  hEl.textContent  = header;
+  bEl.textContent  = body;
+}
 
-  document.getElementById('btn-fetch').addEventListener('click', refreshAll);
+// ── Toast notifications ───────────────────────────────────────────────────
 
-  // ── Enter key in search ──────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
 
-  document.getElementById('search-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') refreshAll();
-  });
+// ── Clock ─────────────────────────────────────────────────────────────────
 
-  // ── Initial load ─────────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
 
-  refreshAll();
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function fmtTime(iso) {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch { return iso; }
+}
+
+function envIcon(env) {
+  return { aws: '☁', gcp: '🌐', azure: '⬡', on_prem: '🖥' }[env] || '•';
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────
+
+poll();
+setInterval(poll, 5000);
+setInterval(updateClock, 1000);
+updateClock();
 </script>
 
 </body>
