@@ -1341,8 +1341,22 @@ function renderLog(newIds = [], total = null, returned = null) {
 // ── Test request handlers ─────────────────────────────────────────────────
 
 async function sendPreset(name) {
-  const body = PRESETS[name];
-  if (!body) return;
+  const preset = PRESETS[name];
+  if (!preset) return;
+
+  // Merge builder control values over the preset so the user's tenant,
+  // strategy, and cloud preference are respected without changing the
+  // preset's fixed sensitivity level.
+  const tenant    = document.getElementById('cb-tenant')?.value.trim();
+  const strategy  = document.getElementById('cb-strategy')?.value;
+  const cloudPref = document.getElementById('cb-cloud-pref')?.value;
+
+  const body = { ...preset };
+  if (tenant)    body.tenant_id = tenant;
+  if (strategy)  body.strategy  = strategy;
+  if (cloudPref) body.region_hint = cloudPref;
+  else           delete body.region_hint;
+
   await sendRoute(body, name);
 }
 
