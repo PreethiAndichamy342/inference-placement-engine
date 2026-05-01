@@ -46,6 +46,7 @@ from src.api.schemas import (
     ServerSummary,
 )
 from src.clouds.base import AdapterError
+import src.demo_servers as demo_servers
 from src.clouds.on_prem import OllamaAdapter, OnPremAdapter
 from src.engine.health import HealthWatcher
 from src.engine.models import (
@@ -70,9 +71,6 @@ logger = logging.getLogger(__name__)
 
 class _Settings:
     health_poll_interval: float = float(os.getenv("HEALTH_POLL_INTERVAL", "30"))
-    on_prem_base_url: str = os.getenv("ON_PREM_BASE_URL", "http://localhost:8000")
-    on_prem_model_id: str = os.getenv("ON_PREM_MODEL_ID", "llama3-med")
-    on_prem_api_key: str | None = os.getenv("ON_PREM_API_KEY")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
 
@@ -85,35 +83,19 @@ logging.basicConfig(level=settings.log_level)
 # ---------------------------------------------------------------------------
 
 
-def _build_server_pool() -> list[tuple[CloudServer, OnPremAdapter]]:
+def _build_server_pool() -> list[tuple[CloudServer, OllamaAdapter]]:
     """
-    Construct the initial server pool and their paired adapters.
+    Return (CloudServer, OllamaAdapter) pairs from the demo server registry.
 
-    Extend this function (or replace it with a config-file loader) to add
-    AWS, GCP, or additional on-prem nodes. Each entry is a (CloudServer,
-    adapter) pair so the HealthWatcher and PlacementRouter share the exact
-    same CloudServer objects — status updates from the watcher are
-    immediately visible to the router.
+    All three simulated environments (aws-sim, gcp-sim, on-prem) are
+    registered so the HealthWatcher and PlacementRouter share the same
+    CloudServer objects — health-status updates are immediately visible
+    to the router.
     """
-    on_prem_server = CloudServer(
-        server_id="on-prem-01",
-        cloud_env=CloudEnv.ON_PREM,
-        region="local",
-        endpoint=f"{settings.on_prem_base_url}/v1/completions",
-        supported_models={settings.on_prem_model_id},
-        max_sensitivity=DataSensitivity.PHI_STRICT,
-        has_baa=True,
-        gpu_count=1,
-        gpu_type="A100",
-        status=ServerStatus.HEALTHY,
-    )
-    on_prem_adapter = OllamaAdapter(
-        base_url=settings.on_prem_base_url,
-        model_id=settings.on_prem_model_id,
-        server_id=on_prem_server.server_id,
-        api_key=settings.on_prem_api_key,
-    )
-    return [(on_prem_server, on_prem_adapter)]
+    return [
+        (server, demo_servers.adapters[server.server_id])
+        for server in demo_servers.servers
+    ]
 
 
 # ---------------------------------------------------------------------------
