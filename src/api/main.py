@@ -41,7 +41,7 @@ from src.api.schemas import (
     ServerSummary,
 )
 from src.clouds.base import AdapterError
-from src.clouds.on_prem import OnPremAdapter
+from src.clouds.on_prem import OllamaAdapter, OnPremAdapter
 from src.engine.health import HealthWatcher
 from src.engine.models import (
     CloudEnv,
@@ -102,7 +102,7 @@ def _build_server_pool() -> list[tuple[CloudServer, OnPremAdapter]]:
         gpu_type="A100",
         status=ServerStatus.HEALTHY,
     )
-    on_prem_adapter = OnPremAdapter(
+    on_prem_adapter = OllamaAdapter(
         base_url=settings.on_prem_base_url,
         model_id=settings.on_prem_model_id,
         server_id=on_prem_server.server_id,

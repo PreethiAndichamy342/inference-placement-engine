@@ -19,7 +19,7 @@ Usage::
     # adapters: dict[str, OnPremAdapter] — keyed by server_id
 """
 
-from src.clouds.on_prem import OnPremAdapter
+from src.clouds.on_prem import OllamaAdapter as OnPremAdapter
 from src.engine.models import CloudEnv, CloudServer, DataSensitivity
 
 _MODEL = "tinyllama:latest"

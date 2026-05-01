@@ -232,6 +232,49 @@ class OnPremAdapter(CloudAdapter):
         self._session.close()
         logger.debug("on_prem: HTTP session closed for server=%s", self._server_id)
 
+
+class OllamaAdapter(OnPremAdapter):
+    """
+    OnPremAdapter variant for Ollama servers.
+
+    Ollama does not expose a vLLM-style ``/health`` endpoint. Instead,
+    ``GET /api/tags`` (which lists available models) is used as the liveness
+    probe — it returns 200 when the server is ready and reachable.
+
+    Inference requests are forwarded to Ollama's OpenAI-compatible
+    ``/v1/completions`` endpoint, which Ollama has supported since v0.1.15,
+    so the rest of OnPremAdapter works unchanged.
+    """
+
+    def health_check(self) -> ServerStatus:
+        """Use ``GET /api/tags`` as the Ollama liveness probe."""
+        url = f"{self._base_url}/api/tags"
+        try:
+            resp = self._session.get(url, timeout=self._timeout)
+            if resp.status_code == 200:
+                logger.debug(
+                    "ollama: health=HEALTHY server=%s", self._server_id
+                )
+                return ServerStatus.HEALTHY
+            logger.warning(
+                "ollama: health=UNAVAILABLE server=%s HTTP %d",
+                self._server_id,
+                resp.status_code,
+            )
+            return ServerStatus.UNAVAILABLE
+        except requests.exceptions.Timeout:
+            logger.warning(
+                "ollama: health=UNAVAILABLE server=%s — /api/tags timed out",
+                self._server_id,
+            )
+            return ServerStatus.UNAVAILABLE
+        except requests.exceptions.ConnectionError:
+            logger.warning(
+                "ollama: health=UNAVAILABLE server=%s — connection refused",
+                self._server_id,
+            )
+            return ServerStatus.UNAVAILABLE
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
