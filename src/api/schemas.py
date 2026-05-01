@@ -220,6 +220,53 @@ class MetricsResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# GET /logs — request log viewer
+# ---------------------------------------------------------------------------
+
+
+class LogEntry(BaseModel):
+    """
+    A single routing decision log record.
+
+    PHI-safe: payload, prompt text, and raw request fields are never stored.
+    Only routing metadata is captured.
+    """
+
+    timestamp: datetime
+    request_id: str
+    tenant_id: str
+    data_sensitivity: DataSensitivityLiteral
+    strategy_used: RoutingStrategyLiteral
+    selected_server_id: str | None = None
+    cloud_env: CloudEnvLiteral | None = None
+    routing_latency_ms: float
+    rejected: bool
+    rejection_reason: str | None = None
+
+
+class LogsResponse(BaseModel):
+    """Response body for ``GET /logs``."""
+
+    entries: list[LogEntry]
+    total: int = Field(..., description="Entries matching the filter before limit is applied.")
+    returned: int = Field(..., description="Entries actually returned in this response.")
+
+
+# ---------------------------------------------------------------------------
+# GET /logs/stats
+# ---------------------------------------------------------------------------
+
+
+class LogsStatsResponse(BaseModel):
+    """Response body for ``GET /logs/stats``."""
+
+    total: int
+    rejected_count: int
+    by_sensitivity: dict[str, int]
+    by_cloud_env: dict[str, int]
+
+
+# ---------------------------------------------------------------------------
 # Generic error envelope
 # ---------------------------------------------------------------------------
 

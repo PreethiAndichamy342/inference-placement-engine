@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inference Placement Engine — Log Viewer</title>
+  <style>
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --border:    #2a2d3e;
+      --text:      #e2e8f0;
+      --muted:     #8892a4;
+      --accent:    #4f8ef7;
+      --accent-dim:#1e3a6e;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --orange:    #f97316;
+      --yellow:    #eab308;
+      --purple:    #a78bfa;
+      --teal:      #2dd4bf;
+      --row-hover: #22253a;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header .logo {
+      width: 28px; height: 28px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    header h1 { font-size: 16px; font-weight: 600; color: var(--text); }
+    header .subtitle { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+    /* ── Main layout ── */
+    main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .stats-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      flex: 1;
+      min-width: 180px;
+    }
+    .stats-card h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .stat-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .stat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid transparent;
+    }
+    .stat-chip .count {
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .stat-total {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+    .stat-total-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Controls ── */
+    .controls {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .controls input[type="text"],
+    .controls select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 7px 12px;
+      font-size: 13px;
+      font-family: var(--font);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .controls input[type="text"] { flex: 1; min-width: 200px; }
+    .controls input[type="text"]:focus,
+    .controls select:focus { border-color: var(--accent); }
+    .controls select option { background: var(--surface); }
+
+    .btn {
+      padding: 7px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { background: var(--row-hover); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #3a7ce0; border-color: #3a7ce0; }
+    .btn-live {
+      background: var(--bg);
+      border-color: var(--green);
+      color: var(--green);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-live.active {
+      background: rgba(34,197,94,0.12);
+    }
+    .live-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      display: none;
+    }
+    .btn-live.active .live-dot {
+      display: block;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .controls-right { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+    .result-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    thead th {
+      background: var(--bg);
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      font-weight: 600;
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--row-hover); }
+    tbody td {
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--text);
+      vertical-align: middle;
+    }
+    .mono { font-family: "SF Mono", "Fira Code", "Consolas", monospace; font-size: 12px; }
+    .text-muted { color: var(--muted); }
+
+    /* Empty / loading states */
+    .table-empty {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .table-empty .icon { font-size: 32px; margin-bottom: 8px; }
+
+    /* ── Sensitivity badges ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+    .badge-public       { background: rgba(34,197,94,0.15);  color: var(--green);  border: 1px solid rgba(34,197,94,0.3); }
+    .badge-internal     { background: rgba(79,142,247,0.15); color: var(--accent); border: 1px solid rgba(79,142,247,0.3); }
+    .badge-sensitive    { background: rgba(249,115,22,0.15); color: var(--orange); border: 1px solid rgba(249,115,22,0.3); }
+    .badge-phi          { background: rgba(239,68,68,0.15);  color: var(--red);    border: 1px solid rgba(239,68,68,0.3); }
+    .badge-phi_strict   { background: rgba(239,68,68,0.25);  color: #ff8080;       border: 1px solid rgba(239,68,68,0.5); }
+
+    /* ── Cloud env pills ── */
+    .env-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 9px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .env-aws     { background: rgba(249,115,22,0.12); color: #fb923c; }
+    .env-gcp     { background: rgba(79,142,247,0.12); color: var(--accent); }
+    .env-azure   { background: rgba(59,130,246,0.12); color: #60a5fa; }
+    .env-on_prem { background: rgba(167,139,250,0.12); color: var(--purple); }
+
+    /* ── Status indicator ── */
+    .status-ok       { color: var(--green); font-weight: 600; }
+    .status-rejected { color: var(--red);   font-weight: 600; }
+
+    /* ── Latency ── */
+    .latency-fast   { color: var(--green); }
+    .latency-medium { color: var(--yellow); }
+    .latency-slow   { color: var(--red); }
+
+    /* ── Stat chip colour presets ── */
+    .chip-public     { background: rgba(34,197,94,0.1);  border-color: rgba(34,197,94,0.25);  color: var(--green);  }
+    .chip-internal   { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.25); color: var(--accent); }
+    .chip-sensitive  { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.25); color: var(--orange); }
+    .chip-phi        { background: rgba(239,68,68,0.1);  border-color: rgba(239,68,68,0.25);  color: var(--red);    }
+    .chip-phi_strict { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.4);   color: #ff8080;       }
+    .chip-aws        { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.25); color: #fb923c;       }
+    .chip-gcp        { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.25); color: var(--accent); }
+    .chip-azure      { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.25); color: #60a5fa;       }
+    .chip-on_prem    { background: rgba(167,139,250,0.1);border-color: rgba(167,139,250,0.25);color: var(--purple); }
+    .chip-rejected   { background: rgba(239,68,68,0.1);  border-color: rgba(239,68,68,0.25);  color: var(--red);    }
+    .chip-total      { background: rgba(79,142,247,0.1); border-color: rgba(79,142,247,0.25); color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡</div>
+  <h1>Inference Placement Engine</h1>
+  <span class="subtitle">HIPAA-aware routing log viewer</span>
+</header>
+
+<main>
+
+  <!-- Stats bar -->
+  <div class="stats-bar" id="stats-bar">
+    <div class="stats-card">
+      <h3>Total Decisions</h3>
+      <div class="stat-total" id="stat-total">—</div>
+      <div class="stat-total-label" id="stat-rejected-label">— rejected</div>
+    </div>
+    <div class="stats-card">
+      <h3>By Sensitivity</h3>
+      <div class="stat-chips" id="chips-sensitivity"></div>
+    </div>
+    <div class="stats-card">
+      <h3>By Cloud Env</h3>
+      <div class="stat-chips" id="chips-cloud-env"></div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <input type="text" id="search-input" placeholder="Search request_id or tenant_id…" />
+
+    <select id="filter-sensitivity">
+      <option value="">All Sensitivity</option>
+      <option value="public">public</option>
+      <option value="internal">internal</option>
+      <option value="sensitive">sensitive</option>
+      <option value="phi">phi</option>
+      <option value="phi_strict">phi_strict</option>
+    </select>
+
+    <select id="filter-cloud-env">
+      <option value="">All Cloud Env</option>
+      <option value="aws">aws</option>
+      <option value="gcp">gcp</option>
+      <option value="azure">azure</option>
+      <option value="on_prem">on_prem</option>
+    </select>
+
+    <select id="filter-rejected">
+      <option value="">All Status</option>
+      <option value="false">Accepted</option>
+      <option value="true">Rejected</option>
+    </select>
+
+    <select id="filter-limit">
+      <option value="25">25 rows</option>
+      <option value="50" selected>50 rows</option>
+      <option value="100">100 rows</option>
+      <option value="250">250 rows</option>
+      <option value="500">500 rows</option>
+    </select>
+
+    <div class="controls-right">
+      <span class="result-count" id="result-count"></span>
+      <button class="btn btn-primary" id="btn-fetch">Fetch</button>
+      <button class="btn btn-live" id="btn-live-tail">
+        <span class="live-dot"></span>Live Tail
+      </button>
+    </div>
+  </div>
+
+  <!-- Log table -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Request ID</th>
+          <th>Tenant</th>
+          <th>Sensitivity</th>
+          <th>Server</th>
+          <th>Cloud Env</th>
+          <th>Latency</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="log-tbody">
+        <tr><td colspan="8">
+          <div class="table-empty">
+            <div class="icon">📋</div>
+            <div>No log entries yet. Send a request to <code>POST /route</code> to see routing decisions here.</div>
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<script>
+  let liveTailTimer = null;
+  let liveTailActive = false;
+
+  // ── Query builders ──────────────────────────────────────────────────────
+
+  function buildLogsUrl() {
+    const params = new URLSearchParams();
+    const search = document.getElementById('search-input').value.trim();
+    const sensitivity = document.getElementById('filter-sensitivity').value;
+    const cloudEnv = document.getElementById('filter-cloud-env').value;
+    const rejected = document.getElementById('filter-rejected').value;
+    const limit = document.getElementById('filter-limit').value;
+
+    if (search)      params.set('search', search);
+    if (sensitivity) params.set('sensitivity', sensitivity);
+    if (cloudEnv)    params.set('cloud_env', cloudEnv);
+    if (rejected)    params.set('rejected', rejected);
+    params.set('limit', limit);
+
+    return '/logs?' + params.toString();
+  }
+
+  // ── Data fetching ───────────────────────────────────────────────────────
+
+  async function fetchLogs() {
+    try {
+      const resp = await fetch(buildLogsUrl());
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      renderTable(data.entries, data.total, data.returned);
+    } catch (err) {
+      console.error('fetchLogs error:', err);
+    }
+  }
+
+  async function fetchStats() {
+    try {
+      const resp = await fetch('/logs/stats');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      renderStats(data);
+    } catch (err) {
+      console.error('fetchStats error:', err);
+    }
+  }
+
+  async function refreshAll() {
+    await Promise.all([fetchLogs(), fetchStats()]);
+  }
+
+  // ── Renderers ───────────────────────────────────────────────────────────
+
+  function renderStats(data) {
+    document.getElementById('stat-total').textContent = data.total;
+    document.getElementById('stat-rejected-label').textContent =
+      `${data.rejected_count} rejected`;
+
+    const sensitivityOrder = ['public', 'internal', 'sensitive', 'phi', 'phi_strict'];
+    const sensEl = document.getElementById('chips-sensitivity');
+    sensEl.innerHTML = '';
+    sensitivityOrder.forEach(key => {
+      const n = data.by_sensitivity[key];
+      if (!n) return;
+      sensEl.insertAdjacentHTML('beforeend',
+        `<span class="stat-chip chip-${key}"><span class="count">${n}</span>${key}</span>`);
+    });
+    if (!sensEl.children.length) sensEl.innerHTML = '<span class="text-muted">—</span>';
+
+    const envOrder = ['aws', 'gcp', 'azure', 'on_prem'];
+    const envEl = document.getElementById('chips-cloud-env');
+    envEl.innerHTML = '';
+    envOrder.forEach(key => {
+      const n = data.by_cloud_env[key];
+      if (!n) return;
+      envEl.insertAdjacentHTML('beforeend',
+        `<span class="stat-chip chip-${key}"><span class="count">${n}</span>${key}</span>`);
+    });
+    if (!envEl.children.length) envEl.innerHTML = '<span class="text-muted">—</span>';
+  }
+
+  function renderTable(entries, total, returned) {
+    const tbody = document.getElementById('log-tbody');
+    const countEl = document.getElementById('result-count');
+
+    if (!entries || entries.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="8">
+        <div class="table-empty">
+          <div class="icon">🔍</div>
+          <div>No entries match the current filters.</div>
+        </div>
+      </td></tr>`;
+      countEl.textContent = '';
+      return;
+    }
+
+    countEl.textContent = `${returned} of ${total} entries`;
+
+    tbody.innerHTML = entries.map(e => {
+      const ts = formatTimestamp(e.timestamp);
+      const reqId = `<span class="mono text-muted" title="${e.request_id}">${e.request_id.slice(0, 8)}…</span>`;
+      const sensBadge = `<span class="badge badge-${e.data_sensitivity}">${e.data_sensitivity}</span>`;
+      const server = e.selected_server_id
+        ? `<span class="mono">${e.selected_server_id}</span>`
+        : '<span class="text-muted">—</span>';
+      const envPill = e.cloud_env
+        ? `<span class="env-pill env-${e.cloud_env}">${envIcon(e.cloud_env)} ${e.cloud_env}</span>`
+        : '<span class="text-muted">—</span>';
+      const latency = latencyCell(e.routing_latency_ms);
+      const statusCell = e.rejected
+        ? `<span class="status-rejected" title="${e.rejection_reason || ''}">✗ Rejected</span>`
+        : `<span class="status-ok">✓ Routed</span>`;
+
+      return `<tr>
+        <td class="mono text-muted">${ts}</td>
+        <td>${reqId}</td>
+        <td>${escapeHtml(e.tenant_id)}</td>
+        <td>${sensbadge(e.data_sensitivity)}</td>
+        <td>${server}</td>
+        <td>${envPill}</td>
+        <td>${latency}</td>
+        <td>${statusCell}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────
+
+  function sensbadge(s) {
+    return `<span class="badge badge-${s}">${s}</span>`;
+  }
+
+  function envIcon(env) {
+    return { aws: '☁', gcp: '🌐', azure: '⬡', on_prem: '🖥' }[env] || '';
+  }
+
+  function latencyCell(ms) {
+    const cls = ms < 1 ? 'latency-fast' : ms < 10 ? 'latency-medium' : 'latency-slow';
+    return `<span class="${cls}">${ms.toFixed(2)} ms</span>`;
+  }
+
+  function formatTimestamp(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        + ' ' + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    } catch { return iso; }
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Live Tail ────────────────────────────────────────────────────────────
+
+  const btnLive = document.getElementById('btn-live-tail');
+
+  btnLive.addEventListener('click', () => {
+    liveTailActive = !liveTailActive;
+    if (liveTailActive) {
+      btnLive.classList.add('active');
+      btnLive.childNodes[1].textContent = 'Live Tail: ON';
+      liveTailTimer = setInterval(refreshAll, 3000);
+      refreshAll();
+    } else {
+      btnLive.classList.remove('active');
+      btnLive.childNodes[1].textContent = 'Live Tail';
+      clearInterval(liveTailTimer);
+      liveTailTimer = null;
+    }
+  });
+
+  // ── Manual fetch button ──────────────────────────────────────────────────
+
+  document.getElementById('btn-fetch').addEventListener('click', refreshAll);
+
+  // ── Enter key in search ──────────────────────────────────────────────────
+
+  document.getElementById('search-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') refreshAll();
+  });
+
+  // ── Initial load ─────────────────────────────────────────────────────────
+
+  refreshAll();
+</script>
+
+</body>
+</html>

@@ -23,16 +23,21 @@ from __future__ import annotations
 
 import logging
 import os
+from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import AsyncIterator
+from pathlib import Path
+from typing import AsyncIterator, Optional
 
-from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse, Response
 
 from src.api.schemas import (
     ErrorDetail,
     HealthResponse,
+    LogEntry,
+    LogsResponse,
+    LogsStatsResponse,
     MetricsResponse,
     RouteRequest,
     RouteResponse,
@@ -136,6 +141,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.watcher = watcher
     app.state.router = router
     app.state.servers = servers
+    app.state.log: deque[LogEntry] = deque(maxlen=500)
 
     logger.info(
         "placement engine started — servers=%d poll_interval=%.0fs",
@@ -229,6 +235,23 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
 
     strategy = RoutingStrategy(body.strategy)
     decision = router.route(inference_request, strategy=strategy)
+
+    # Append PHI-safe log entry (payload and prompt text are never stored)
+    selected_server = decision.selected_server
+    request.app.state.log.append(
+        LogEntry(
+            timestamp=datetime.now(tz=timezone.utc),
+            request_id=decision.request_id,
+            tenant_id=inference_request.tenant_id,
+            data_sensitivity=inference_request.data_sensitivity.value,
+            strategy_used=decision.strategy_used.value,
+            selected_server_id=selected_server.server_id if selected_server else None,
+            cloud_env=selected_server.cloud_env.value if selected_server else None,
+            routing_latency_ms=decision.routing_latency_ms,
+            rejected=decision.rejected,
+            rejection_reason=decision.rejection_reason,
+        )
+    )
 
     if decision.rejected:
         logger.warning(
@@ -329,3 +352,99 @@ async def metrics(request: Request) -> MetricsResponse:
         ],
         collected_at=datetime.now(tz=timezone.utc),
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /logs
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/logs",
+    response_model=LogsResponse,
+    summary="Query the in-memory routing decision log (last 500 entries)",
+)
+async def get_logs(
+    request: Request,
+    sensitivity: Optional[str] = Query(None, description="Filter by data_sensitivity tier"),
+    tenant_id: Optional[str] = Query(None, description="Filter by exact tenant_id"),
+    cloud_env: Optional[str] = Query(None, description="Filter by cloud environment"),
+    rejected: Optional[bool] = Query(None, description="true = rejected only, false = accepted only"),
+    limit: int = Query(50, ge=1, le=500, description="Max entries to return (default 50)"),
+    search: Optional[str] = Query(None, description="Match against request_id or tenant_id (case-insensitive)"),
+) -> LogsResponse:
+    """
+    Return routing decision log entries. No payload or PHI fields are ever stored.
+
+    Entries are returned newest-first. Use ``limit`` to control page size (max 500).
+    """
+    entries: list[LogEntry] = list(request.app.state.log)
+
+    if sensitivity is not None:
+        entries = [e for e in entries if e.data_sensitivity == sensitivity]
+    if tenant_id is not None:
+        entries = [e for e in entries if e.tenant_id == tenant_id]
+    if cloud_env is not None:
+        entries = [e for e in entries if e.cloud_env == cloud_env]
+    if rejected is not None:
+        entries = [e for e in entries if e.rejected == rejected]
+    if search:
+        needle = search.lower()
+        entries = [
+            e for e in entries
+            if needle in e.request_id.lower() or needle in e.tenant_id.lower()
+        ]
+
+    total = len(entries)
+    # Return newest first
+    entries = list(reversed(entries))[:limit]
+
+    return LogsResponse(entries=entries, total=total, returned=len(entries))
+
+
+# ---------------------------------------------------------------------------
+# GET /logs/stats
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/logs/stats",
+    response_model=LogsStatsResponse,
+    summary="Aggregated counts from the routing log grouped by sensitivity and cloud_env",
+)
+async def get_logs_stats(request: Request) -> LogsStatsResponse:
+    """
+    Returns total counts and breakdowns by ``data_sensitivity`` and ``cloud_env``
+    across all entries currently in the in-memory log.
+    """
+    entries: list[LogEntry] = list(request.app.state.log)
+
+    by_sensitivity: dict[str, int] = {}
+    by_cloud_env: dict[str, int] = {}
+    rejected_count = 0
+
+    for e in entries:
+        by_sensitivity[e.data_sensitivity] = by_sensitivity.get(e.data_sensitivity, 0) + 1
+        if e.cloud_env:
+            by_cloud_env[e.cloud_env] = by_cloud_env.get(e.cloud_env, 0) + 1
+        if e.rejected:
+            rejected_count += 1
+
+    return LogsStatsResponse(
+        total=len(entries),
+        rejected_count=rejected_count,
+        by_sensitivity=by_sensitivity,
+        by_cloud_env=by_cloud_env,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /dashboard
+# ---------------------------------------------------------------------------
+
+
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard() -> Response:
+    """Serve the CloudWatch-style log viewer dashboard."""
+    html_path = Path(__file__).parent.parent.parent / "dashboard" / "index.html"
+    return Response(content=html_path.read_text(), media_type="text/html")
