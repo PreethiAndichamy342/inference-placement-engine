@@ -374,9 +374,44 @@ header {
 .custom-area {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+/* Builder controls grid */
+.custom-builder {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
-.custom-area label { font-size: 11px; color: var(--text2); }
+.custom-builder-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.custom-builder-row label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text3);
+}
+.custom-builder-row select,
+.custom-builder-row input[type="text"] {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: var(--font);
+  outline: none;
+  transition: border-color .15s;
+  width: 100%;
+}
+.custom-builder-row select:focus,
+.custom-builder-row input[type="text"]:focus { border-color: var(--accent); }
+.custom-builder-row select option { background: var(--surface2); }
+
 .custom-area textarea {
   background: var(--bg2);
   border: 1px solid var(--border2);
@@ -386,28 +421,94 @@ header {
   font-size: 11px;
   padding: 8px 10px;
   resize: vertical;
-  min-height: 80px;
+  min-height: 88px;
   outline: none;
   transition: border-color .15s;
   line-height: 1.5;
 }
 .custom-area textarea:focus { border-color: var(--accent); }
 
+/* Button row under the textarea */
+.custom-btn-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .send-custom-btn {
-  padding: 8px 14px;
+  padding: 7px 14px;
   border-radius: var(--radius-sm);
   background: var(--accent);
-  border: none;
+  border: 1px solid transparent;
   color: #fff;
   font-size: 12px;
   font-weight: 600;
   font-family: var(--font);
   cursor: pointer;
   transition: background .15s, opacity .15s;
-  align-self: flex-end;
+  white-space: nowrap;
 }
 .send-custom-btn:hover    { background: #3a7ce0; }
 .send-custom-btn:disabled { opacity: .5; cursor: default; }
+
+.gen-sample-btn {
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.gen-sample-btn:hover { background: var(--border2); color: var(--text); }
+
+.burst-btn {
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--purple-bg);
+  border: 1px solid rgba(167,139,250,.3);
+  color: var(--purple);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+  white-space: nowrap;
+}
+.burst-btn:hover    { background: rgba(167,139,250,.22); }
+.burst-btn:disabled { opacity: .5; cursor: default; }
+
+/* Progress bar */
+.burst-progress {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+}
+.burst-progress.visible { display: flex; }
+.burst-progress-label {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: var(--mono);
+}
+.burst-track {
+  height: 4px;
+  background: var(--bg2);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.burst-fill {
+  height: 100%;
+  background: var(--purple);
+  border-radius: 999px;
+  width: 0%;
+  transition: width .2s ease;
+}
 
 /* Response preview */
 .response-preview {
@@ -768,15 +869,64 @@ code { font-family: var(--mono); font-size: 11px; }
         <hr class="test-divider" />
 
         <div class="custom-area">
-          <label>Custom JSON body</label>
+          <!-- Builder dropdowns -->
+          <div class="custom-builder">
+            <div class="custom-builder-row">
+              <label>Tenant</label>
+              <input type="text" id="cb-tenant" value="hospital_A" />
+            </div>
+            <div class="custom-builder-row">
+              <label>Sensitivity</label>
+              <select id="cb-sensitivity">
+                <option value="public">public</option>
+                <option value="internal" selected>internal</option>
+                <option value="sensitive">sensitive</option>
+                <option value="phi">phi</option>
+                <option value="phi_strict">phi_strict</option>
+              </select>
+            </div>
+            <div class="custom-builder-row">
+              <label>Strategy</label>
+              <select id="cb-strategy">
+                <option value="compliance_first" selected>compliance_first</option>
+                <option value="least_loaded">least_loaded</option>
+                <option value="latency_optimized">latency_optimized</option>
+                <option value="cost_optimized">cost_optimized</option>
+                <option value="round_robin">round_robin</option>
+              </select>
+            </div>
+            <div class="custom-builder-row">
+              <label>Cloud preference</label>
+              <select id="cb-cloud-pref">
+                <option value="">Auto (policy decides)</option>
+                <option value="aws">Prefer AWS</option>
+                <option value="gcp">Prefer GCP</option>
+                <option value="on_prem">Require on-prem</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- JSON textarea -->
           <textarea id="custom-json" spellcheck="false">{
   "model_id": "tinyllama:latest",
-  "payload": {"prompt": "Summarise note"},
+  "payload": {"prompt": "Summarise discharge note"},
   "tenant_id": "hospital_A",
   "data_sensitivity": "internal",
   "strategy": "compliance_first"
 }</textarea>
-          <button class="send-custom-btn" id="send-custom-btn" onclick="sendCustom()">Send →</button>
+
+          <!-- Action buttons -->
+          <div class="custom-btn-row">
+            <button class="gen-sample-btn" onclick="generateSampleJSON()">⚙ Generate JSON</button>
+            <button class="send-custom-btn" id="send-custom-btn" onclick="sendCustom()">Send →</button>
+            <button class="burst-btn" id="burst-btn" onclick="sendBurst()">✦ 20 Random</button>
+          </div>
+
+          <!-- Burst progress -->
+          <div class="burst-progress" id="burst-progress">
+            <div class="burst-progress-label" id="burst-label">Sent 0/20…</div>
+            <div class="burst-track"><div class="burst-fill" id="burst-fill"></div></div>
+          </div>
         </div>
 
         <div class="response-preview" id="response-preview" style="display:none">
@@ -1196,20 +1346,138 @@ async function sendPreset(name) {
   await sendRoute(body, name);
 }
 
+// ── Custom JSON builder ───────────────────────────────────────────────────
+
+const SAMPLE_PROMPTS = {
+  public:     'What is the recommended first-line treatment for type 2 diabetes?',
+  internal:   'Summarise the standard discharge note structure.',
+  sensitive:  'List common risk factors for readmission within 30 days.',
+  phi:        'Generate a visit summary for the patient record.',
+  phi_strict: 'Process substance use assessment — 42 CFR Part 2 data.',
+};
+
+function generateSampleJSON() {
+  const tenant      = document.getElementById('cb-tenant').value.trim() || 'hospital_A';
+  const sensitivity = document.getElementById('cb-sensitivity').value;
+  const strategy    = document.getElementById('cb-strategy').value;
+  const cloudPref   = document.getElementById('cb-cloud-pref').value;
+
+  const body = {
+    model_id: 'tinyllama:latest',
+    payload:  { prompt: SAMPLE_PROMPTS[sensitivity] || 'Process request.' },
+    tenant_id: tenant,
+    data_sensitivity: sensitivity,
+    strategy,
+  };
+
+  // Cloud preference becomes a region_hint tag that ops teams can map to a server
+  if (cloudPref) body.region_hint = cloudPref;
+
+  document.getElementById('custom-json').value = JSON.stringify(body, null, 2);
+}
+
 async function sendCustom() {
-  const btn  = document.getElementById('send-custom-btn');
-  const raw  = document.getElementById('custom-json').value.trim();
+  const btn = document.getElementById('send-custom-btn');
+  const raw = document.getElementById('custom-json').value.trim();
   let body;
   try {
     body = JSON.parse(raw);
   } catch {
-    showResponse('error', 'JSON parse error', raw);
+    showResponse('error', 'JSON parse error — check the textarea', '');
     toast('Invalid JSON', 'error');
     return;
   }
   btn.disabled = true;
   await sendRoute(body, 'custom');
   btn.disabled = false;
+}
+
+// ── Burst generator ───────────────────────────────────────────────────────
+
+const BURST_TENANTS = ['hospital_A', 'hospital_B', 'clinic_C'];
+
+const BURST_SENSITIVITY_WEIGHTS = [
+  { value: 'public',     weight: 60 },
+  { value: 'internal',   weight: 20 },
+  { value: 'sensitive',  weight: 10 },
+  { value: 'phi',        weight:  6 },
+  { value: 'phi_strict', weight:  4 },
+];
+
+const BURST_STRATEGIES = [
+  'compliance_first', 'least_loaded', 'latency_optimized',
+  'cost_optimized', 'round_robin',
+];
+
+function weightedPick(items) {
+  const total = items.reduce((s, i) => s + i.weight, 0);
+  let r = Math.random() * total;
+  for (const item of items) {
+    r -= item.weight;
+    if (r <= 0) return item.value;
+  }
+  return items[items.length - 1].value;
+}
+
+function randPick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function sendBurst() {
+  const btn      = document.getElementById('burst-btn');
+  const progress = document.getElementById('burst-progress');
+  const label    = document.getElementById('burst-label');
+  const fill     = document.getElementById('burst-fill');
+  const TOTAL    = 20;
+
+  btn.disabled = true;
+  progress.classList.add('visible');
+
+  let sent = 0, ok = 0, failed = 0;
+
+  for (let i = 0; i < TOTAL; i++) {
+    const sensitivity = weightedPick(BURST_SENSITIVITY_WEIGHTS);
+    const body = {
+      model_id:         'tinyllama:latest',
+      payload:          { prompt: SAMPLE_PROMPTS[sensitivity] },
+      tenant_id:        randPick(BURST_TENANTS),
+      data_sensitivity: sensitivity,
+      strategy:         randPick(BURST_STRATEGIES),
+    };
+
+    try {
+      const resp = await fetch('/route', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(body),
+      });
+      resp.ok ? ok++ : failed++;
+    } catch {
+      failed++;
+    }
+
+    sent++;
+    label.textContent = `Sent ${sent}/${TOTAL}  ✓ ${ok}  ✗ ${failed}`;
+    fill.style.width  = `${(sent / TOTAL) * 100}%`;
+
+    if (i < TOTAL - 1) await sleep(200);
+  }
+
+  label.textContent = `Done — ${ok} routed, ${failed} failed`;
+  toast(`Burst complete: ${ok}/${TOTAL} routed`, ok === TOTAL ? 'ok' : 'info');
+
+  await fetchFilteredLog();
+  poll();
+
+  btn.disabled = false;
+  setTimeout(() => {
+    progress.classList.remove('visible');
+    fill.style.width = '0%';
+  }, 4000);
 }
 
 async function sendRoute(body, label) {
