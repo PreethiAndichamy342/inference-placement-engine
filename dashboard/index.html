@@ -188,11 +188,120 @@ header {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
-  transition: border-color .2s;
+  transition: border-color .2s, box-shadow .2s;
+  cursor: pointer;
+  position: relative;
 }
-.server-card.healthy   { border-left: 3px solid var(--green); }
-.server-card.degraded  { border-left: 3px solid var(--yellow); }
+.server-card:hover { box-shadow: 0 0 0 1px var(--border2), var(--shadow); }
+.server-card.healthy     { border-left: 3px solid var(--green); }
+.server-card.degraded    { border-left: 3px solid var(--yellow); }
 .server-card.unavailable { border-left: 3px solid var(--red); }
+
+/* Circuit breaker dot — top-right corner, hidden when CLOSED */
+.cb-dot {
+  position: absolute;
+  top: 10px; right: 10px;
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  display: none;
+}
+.cb-dot.open      { display: block; background: var(--red);    box-shadow: 0 0 6px var(--red); }
+.cb-dot.half_open { display: block; background: var(--yellow); box-shadow: 0 0 6px var(--yellow); animation: pulse 1.5s ease-in-out infinite; }
+
+/* ── Server detail modal ───────────────────────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .65);
+  backdrop-filter: blur(2px);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.visible { display: flex; }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 64px rgba(0,0,0,.7);
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  display: flex;
+  flex-direction: column;
+  animation: modal-in .18s ease;
+}
+@keyframes modal-in {
+  from { transform: translateY(12px) scale(.97); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);   opacity: 1; }
+}
+
+.modal-header {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.modal-title { font-size: 14px; font-weight: 700; flex: 1; }
+.modal-close {
+  background: none;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  font-size: 16px;
+  line-height: 1;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.modal-close:hover { background: var(--surface2); color: var(--text); }
+
+.modal-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+
+.modal-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 6px;
+}
+
+.modal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.modal-row:last-child { border-bottom: none; }
+.modal-row-label { color: var(--text2); }
+.modal-row-value { font-family: var(--mono); font-size: 11px; color: var(--text); font-weight: 600; }
+
+.modal-cb-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border2);
+}
+.modal-cb-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.modal-cb-dot.closed    { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+.modal-cb-dot.open      { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+.modal-cb-dot.half_open { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); animation: pulse 1.5s ease-in-out infinite; }
+.modal-cb-label { font-size: 13px; font-weight: 700; flex: 1; }
+.modal-cb-label.closed    { color: var(--green); }
+.modal-cb-label.open      { color: var(--red); }
+.modal-cb-label.half_open { color: var(--yellow); }
+.modal-cb-sub { font-size: 11px; color: var(--text3); }
 
 .server-header {
   display: flex;
@@ -1008,6 +1117,68 @@ code { font-family: var(--mono); font-size: 11px; }
   </div>
 </div>
 
+<!-- ── Server detail modal ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <span id="modal-server-dot" class="server-status-dot" style="margin-top:0;flex-shrink:0"></span>
+      <span class="modal-title" id="modal-title">Server Details</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <!-- Server info -->
+      <div>
+        <div class="modal-section-label">Server</div>
+        <div class="modal-row">
+          <span class="modal-row-label">ID</span>
+          <span class="modal-row-value" id="modal-id">—</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Cloud Env</span>
+          <span class="modal-row-value" id="modal-env">—</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Region</span>
+          <span class="modal-row-value" id="modal-region">—</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Health Status</span>
+          <span class="modal-row-value" id="modal-health">—</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Load</span>
+          <span class="modal-row-value" id="modal-load">—</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Avg Latency</span>
+          <span class="modal-row-value" id="modal-latency">—</span>
+        </div>
+      </div>
+      <!-- Circuit breaker -->
+      <div>
+        <div class="modal-section-label">Circuit Breaker</div>
+        <div class="modal-cb-state" id="modal-cb-state">
+          <span class="modal-cb-dot" id="modal-cb-dot"></span>
+          <span class="modal-cb-label" id="modal-cb-label">—</span>
+          <span class="modal-cb-sub" id="modal-cb-sub"></span>
+        </div>
+        <div class="modal-row" style="margin-top:8px">
+          <span class="modal-row-label">Consecutive Failures</span>
+          <span class="modal-row-value" id="modal-cb-failures">—</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Failure Threshold</span>
+          <span class="modal-row-value" id="modal-cb-threshold">—</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Last Failure</span>
+          <span class="modal-row-value" id="modal-cb-last-fail">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 
 <script>
@@ -1019,6 +1190,7 @@ const state = {
   connected: false,
   health: null,
   metrics: null,
+  circuitStatus: null,
   logEntries: [],
   logStats: null,
   seenIds: new Set(),
@@ -1124,16 +1296,18 @@ async function fetchFilteredLog() {
 
 async function poll() {
   try {
-    const [health, metrics, logs, stats] = await Promise.all([
+    const [health, metrics, circuit, logs, stats] = await Promise.all([
       fetchJSON('/health'),
       fetchJSON('/metrics'),
+      fetchJSON('/circuit-status'),
       fetchJSON(buildLogsUrl()),
       fetchJSON('/logs/stats'),
     ]);
 
-    state.health   = health;
-    state.metrics  = metrics;
-    state.logStats = stats;
+    state.health        = health;
+    state.metrics       = metrics;
+    state.circuitStatus = circuit;
+    state.logStats      = stats;
 
     const entries    = logs.entries || [];
     const newEntries = entries.filter(e => !state.seenIds.has(e.request_id));
@@ -1220,9 +1394,13 @@ function renderServerCards() {
     return;
   }
 
+  // Build a lookup from server_id → circuit info
+  const cbMap = {};
+  (state.circuitStatus?.servers || []).forEach(c => { cbMap[c.server_id] = c; });
+
   grid.innerHTML = servers.map(s => {
     const loadPct  = Math.round((s.current_load || 0) * 100);
-    const maxLat   = 1000; // ms ceiling for bar scaling
+    const maxLat   = 1000;
     const latPct   = Math.min(100, Math.round(((s.avg_latency_ms || 0) / maxLat) * 100));
 
     const loadClass =
@@ -1239,8 +1417,15 @@ function renderServerCards() {
       ? `${s.gpu_count}× ${s.gpu_type || 'GPU'}`
       : 'CPU only';
 
+    const cb       = cbMap[s.server_id];
+    const cbState  = cb?.state || 'closed';
+    const cbDot    = cbState !== 'closed'
+      ? `<span class="cb-dot ${cbState}" title="Circuit ${cbState.toUpperCase()}"></span>`
+      : '';
+
     return `
-    <div class="server-card ${cardClass}">
+    <div class="server-card ${cardClass}" onclick="openModal('${esc(s.server_id)}')">
+      ${cbDot}
       <div class="server-header">
         <span class="server-status-dot"></span>
         <div class="server-info">
@@ -1351,11 +1536,16 @@ async function sendPreset(name) {
   const strategy  = document.getElementById('cb-strategy')?.value;
   const cloudPref = document.getElementById('cb-cloud-pref')?.value;
 
+  console.log('[sendPreset] name:', name);
+  console.log('[sendPreset] dropdowns — tenant:', tenant, '| strategy:', strategy, '| cloudPref:', cloudPref);
+
   const body = { ...preset };
   if (tenant)    body.tenant_id = tenant;
   if (strategy)  body.strategy  = strategy;
   if (cloudPref) body.region_hint = cloudPref;
   else           delete body.region_hint;
+
+  console.log('[sendPreset] final body:', JSON.stringify(body, null, 2));
 
   await sendRoute(body, name);
 }
@@ -1532,6 +1722,56 @@ function showResponse(type, header, body) {
   hEl.className    = `response-preview-header ${type}`;
   hEl.textContent  = header;
   bEl.textContent  = body;
+}
+
+// ── Server detail modal ───────────────────────────────────────────────────
+
+function openModal(serverId) {
+  const server = (state.metrics?.servers || []).find(s => s.server_id === serverId);
+  const cb     = (state.circuitStatus?.servers || []).find(s => s.server_id === serverId);
+
+  // Header dot + title
+  const dot = document.getElementById('modal-server-dot');
+  dot.className = `server-status-dot ${server?.status || ''}`;
+  document.getElementById('modal-title').textContent = serverId;
+
+  // Server rows
+  document.getElementById('modal-id').textContent      = serverId;
+  document.getElementById('modal-env').textContent     = server ? `${envIcon(server.cloud_env)} ${server.cloud_env}` : '—';
+  document.getElementById('modal-region').textContent  = server?.region || '—';
+  document.getElementById('modal-health').textContent  = server?.status || '—';
+  document.getElementById('modal-load').textContent    = server != null ? `${(server.current_load * 100).toFixed(1)}%` : '—';
+  document.getElementById('modal-latency').textContent = server != null ? `${server.avg_latency_ms.toFixed(1)} ms` : '—';
+
+  // Circuit breaker rows
+  const cbState = cb?.state || 'closed';
+  const cbDot   = document.getElementById('modal-cb-dot');
+  cbDot.className = `modal-cb-dot ${cbState}`;
+
+  const labels = { closed: 'Closed', open: 'Open', half_open: 'Half-Open' };
+  const subs   = {
+    closed:    'Normal operation — requests pass through',
+    open:      'Fast-failing — requests rejected until cooldown',
+    half_open: 'Probing — one trial request allowed',
+  };
+  const labelEl = document.getElementById('modal-cb-label');
+  labelEl.textContent = labels[cbState] || cbState;
+  labelEl.className   = `modal-cb-label ${cbState}`;
+  document.getElementById('modal-cb-sub').textContent    = subs[cbState]   || '';
+  document.getElementById('modal-cb-failures').textContent  = cb != null ? `${cb.consecutive_failures}` : '—';
+  document.getElementById('modal-cb-threshold').textContent = cb != null ? `${cb.failure_threshold}`    : '—';
+
+  const lastFail = cb?.last_failure_time;
+  document.getElementById('modal-cb-last-fail').textContent =
+    lastFail ? new Date(lastFail * 1000).toLocaleTimeString() : 'None';
+
+  document.getElementById('modal-overlay').classList.add('visible');
+}
+
+function closeModal(event) {
+  // Allow close button (no event arg) or clicking the overlay backdrop directly
+  if (event && event.target !== document.getElementById('modal-overlay')) return;
+  document.getElementById('modal-overlay').classList.remove('visible');
 }
 
 // ── Toast notifications ───────────────────────────────────────────────────

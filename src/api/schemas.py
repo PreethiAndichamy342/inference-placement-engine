@@ -174,6 +174,10 @@ class RouteResponse(BaseModel):
         description="Wall-clock time the router itself took in milliseconds.",
     )
     decided_at: datetime
+    phi_entities_detected: int = Field(
+        0,
+        description="Number of PHI entities detected and de-identified in the prompt.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +220,31 @@ class MetricsResponse(BaseModel):
     """Response body for ``GET /metrics``."""
 
     servers: list[ServerMetrics]
+    collected_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# GET /circuit-status
+# ---------------------------------------------------------------------------
+
+
+class CircuitServerStatus(BaseModel):
+    """Circuit breaker state for one server."""
+
+    server_id: str
+    state: Literal["closed", "open", "half_open"]
+    consecutive_failures: int
+    failure_threshold: int
+    last_failure_time: float | None = Field(
+        None,
+        description="Monotonic timestamp of the most recent failure, or null if none.",
+    )
+
+
+class CircuitStatusResponse(BaseModel):
+    """Response body for ``GET /circuit-status``."""
+
+    servers: list[CircuitServerStatus]
     collected_at: datetime
 
 
@@ -277,3 +306,38 @@ class ErrorDetail(BaseModel):
     error: str
     detail: str | None = None
     request_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# POST /de-identify
+# ---------------------------------------------------------------------------
+
+
+class DeIdentifyRequest(BaseModel):
+    """Request body for ``POST /de-identify``."""
+
+    model_config = {"extra": "forbid"}
+
+    text: str = Field(
+        ...,
+        min_length=1,
+        description="Free text to de-identify. May contain PHI such as names, dates, SSNs.",
+        examples=["Patient John Smith, DOB 01/15/1980, SSN 123-45-6789"],
+    )
+
+
+class DeIdentifyResponse(BaseModel):
+    """Response body for ``POST /de-identify``."""
+
+    anonymized_text: str = Field(
+        ...,
+        description="Input text with all detected PHI replaced by tokens.",
+    )
+    entity_count: int = Field(
+        ...,
+        description="Total number of PHI entities detected.",
+    )
+    entities_by_type: dict[str, int] = Field(
+        default_factory=dict,
+        description="Count of detected entities per type (PERSON, DATE, SSN, etc.).",
+    )

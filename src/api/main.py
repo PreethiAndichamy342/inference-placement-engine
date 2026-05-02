@@ -3,10 +3,11 @@ FastAPI application for the multi-cloud healthcare inference placement engine.
 
 Endpoints
 ---------
-POST /route    Accept an InferenceRequest, run it through PlacementRouter,
-               return a RoutingDecision as JSON.
-GET  /health   Return app liveness status and count of healthy servers.
-GET  /metrics  Return per-server stats for all registered servers.
+POST /route         Accept an InferenceRequest, run it through PlacementRouter,
+                    return a RoutingDecision as JSON.
+GET  /health        Return app liveness status and count of healthy servers.
+GET  /metrics       Return per-server stats for all registered servers.
+POST /de-identify   De-identify free text and return anonymised version + token count.
 
 Startup / shutdown
 ------------------
@@ -33,6 +34,10 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, Response
 
 from src.api.schemas import (
+    CircuitServerStatus,
+    CircuitStatusResponse,
+    DeIdentifyRequest,
+    DeIdentifyResponse,
     ErrorDetail,
     HealthResponse,
     LogEntry,
@@ -60,6 +65,8 @@ from src.engine.models import (
 )
 from src.engine.policy import PolicyEngine
 from src.engine.router import PlacementRouter
+from src.phi.de_identifier import DeIdentifier
+from src.phi.vault import PHIVault
 
 logger = logging.getLogger(__name__)
 
@@ -120,10 +127,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         default_strategy=RoutingStrategy.COMPLIANCE_FIRST,
     )
 
-    app.state.watcher = watcher
-    app.state.router = router
-    app.state.servers = servers
+    # PHI de-identification pipeline — initialised once, shared across requests
+    de_identifier = DeIdentifier()
+    phi_vault     = PHIVault()
+
+    app.state.watcher       = watcher
+    app.state.router        = router
+    app.state.servers       = servers
     app.state.log: deque[LogEntry] = deque(maxlen=500)
+    app.state.de_identifier = de_identifier
+    app.state.phi_vault     = phi_vault
 
     logger.info(
         "placement engine started — servers=%d poll_interval=%.0fs",
@@ -200,12 +213,31 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
     """
     Accept an inference request, apply HIPAA compliance policy, and return
     the routing decision including which server was selected (or why none was).
+
+    If the payload contains a ``prompt`` field, it is run through the PHI
+    de-identifier before the request is forwarded to the router.  The entity
+    map is encrypted and stored in PHIVault keyed by request_id.
     """
-    router: PlacementRouter = request.app.state.router
+    router:        PlacementRouter = request.app.state.router
+    de_identifier: DeIdentifier    = request.app.state.de_identifier
+    phi_vault:     PHIVault        = request.app.state.phi_vault
+
+    # De-identify prompt text if present
+    payload = dict(body.payload)
+    deid_entity_count = 0
+    if "prompt" in payload and isinstance(payload["prompt"], str):
+        result = de_identifier.de_identify(payload["prompt"])
+        payload["prompt"] = result.anonymized_text
+        deid_entity_count = result.entity_count
+        if result.entity_map:
+            logger.debug(
+                "route: de-identified %d entities from prompt for tenant=%s",
+                result.entity_count, body.tenant_id,
+            )
 
     inference_request = InferenceRequest(
         model_id=body.model_id,
-        payload=body.payload,
+        payload=payload,
         tenant_id=body.tenant_id,
         task_type=InferenceTaskType(body.task_type),
         data_sensitivity=DataSensitivity(body.data_sensitivity),
@@ -214,6 +246,10 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
         region_hint=body.region_hint,
         metadata=body.metadata,
     )
+
+    # Store encrypted entity map — keyed by the new request_id
+    if deid_entity_count:
+        phi_vault.store(inference_request.request_id, result.entity_map)
 
     strategy = RoutingStrategy(body.strategy)
     decision = router.route(inference_request, strategy=strategy)
@@ -266,6 +302,7 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
         },
         routing_latency_ms=decision.routing_latency_ms,
         decided_at=decision.decided_at,
+        phi_entities_detected=deid_entity_count,
     )
 
 
@@ -417,6 +454,80 @@ async def get_logs_stats(request: Request) -> LogsStatsResponse:
         rejected_count=rejected_count,
         by_sensitivity=by_sensitivity,
         by_cloud_env=by_cloud_env,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /circuit-status
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/circuit-status",
+    response_model=CircuitStatusResponse,
+    summary="Return circuit breaker state for all registered servers",
+)
+async def circuit_status() -> CircuitStatusResponse:
+    """
+    Returns the circuit breaker state for every adapter in the demo server
+    registry: CLOSED (normal), OPEN (fast-failing), or HALF_OPEN (probing).
+    """
+    results: list[CircuitServerStatus] = []
+
+    for server in demo_servers.servers:
+        adapter = demo_servers.adapters.get(server.server_id)
+        if adapter is None:
+            continue
+        cb = adapter._circuit
+        last_fail = cb._last_failure_time if cb._failure_count > 0 else None
+        results.append(
+            CircuitServerStatus(
+                server_id=server.server_id,
+                state=cb.state.value,
+                consecutive_failures=cb._failure_count,
+                failure_threshold=cb.failure_threshold,
+                last_failure_time=last_fail,
+            )
+        )
+
+    return CircuitStatusResponse(
+        servers=results,
+        collected_at=datetime.now(tz=timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /de-identify
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/de-identify",
+    response_model=DeIdentifyResponse,
+    status_code=status.HTTP_200_OK,
+    summary="De-identify free text and return anonymised version with token count",
+    responses={
+        422: {"model": ErrorDetail, "description": "Invalid request body"},
+    },
+)
+async def de_identify(body: DeIdentifyRequest, request: Request) -> DeIdentifyResponse:
+    """
+    Run the input text through the PHI de-identifier and return:
+    - ``anonymized_text`` — original text with PHI replaced by tokens
+    - ``entity_count``    — total number of PHI entities detected
+    - ``entities_by_type`` — per-type breakdown (PERSON, DATE, SSN, etc.)
+
+    The entity map (token → original value) is **not** returned here — callers
+    that need re-identification should use ``POST /route`` which stores the map
+    securely in PHIVault.
+    """
+    de_identifier: DeIdentifier = request.app.state.de_identifier
+    result = de_identifier.de_identify(body.text)
+
+    return DeIdentifyResponse(
+        anonymized_text=result.anonymized_text,
+        entity_count=result.entity_count,
+        entities_by_type=result.entities_by_type,
     )
 
 
