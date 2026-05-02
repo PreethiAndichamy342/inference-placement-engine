@@ -3,3 +3,7 @@ uvicorn
 requests
 redis
 python-dotenv
+presidio-analyzer
+presidio-anonymizer
+spacy
+cryptography
