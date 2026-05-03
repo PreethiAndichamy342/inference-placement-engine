@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, Optional
 
+import redis as _redis
+
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -56,6 +58,7 @@ from src.api.schemas import (
     ServerSummary,
     TestPromptsResponse,
 )
+from src.cache.cache import InferenceCache, PHICacheViolation
 from src.clouds.base import AdapterError
 import src.demo_servers as demo_servers
 from src.clouds.on_prem import OllamaAdapter, OnPremAdapter
@@ -138,12 +141,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     de_identifier = DeIdentifier()
     phi_vault     = PHIVault()
 
+    # Inference result cache — Redis-backed, PHI-gated.
+    # Redis is optional: if the instance is unreachable at startup we log a
+    # warning and disable caching rather than refusing to start.
+    cache: InferenceCache | None = None
+    _redis_host = os.getenv("REDIS_HOST", "localhost")
+    _redis_port = int(os.getenv("REDIS_PORT", "6379"))
+    try:
+        _redis_client = _redis.Redis(
+            host=_redis_host, port=_redis_port, decode_responses=True,
+            socket_connect_timeout=2,
+        )
+        _redis_client.ping()
+        cache = InferenceCache(_redis_client)
+        logger.info("cache: Redis connected at %s:%d", _redis_host, _redis_port)
+    except _redis.RedisError as _exc:
+        logger.warning(
+            "cache: Redis unavailable at %s:%d (%s) — caching disabled",
+            _redis_host, _redis_port, _exc,
+        )
+
     app.state.watcher       = watcher
     app.state.router        = router
     app.state.servers       = servers
     app.state.log: deque[LogEntry] = deque(maxlen=500)
     app.state.de_identifier = de_identifier
     app.state.phi_vault     = phi_vault
+    app.state.cache         = cache
 
     logger.info(
         "placement engine started — servers=%d poll_interval=%.0fs",
@@ -229,10 +253,15 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
     If the payload contains a ``prompt`` field, it is run through the PHI
     de-identifier before the request is forwarded to the router.  The entity
     map is encrypted and stored in PHIVault keyed by request_id.
+
+    Routing decisions are cached in Redis (keyed on model_id + sensitivity +
+    sha256(payload)) for non-PHI requests so repeated identical requests skip
+    the scoring pass. PHI and PHI_STRICT requests are never cached.
     """
     router:        PlacementRouter = request.app.state.router
     de_identifier: DeIdentifier    = request.app.state.de_identifier
     phi_vault:     PHIVault        = request.app.state.phi_vault
+    cache: InferenceCache | None   = request.app.state.cache
 
     # De-identify prompt text if present
     payload = dict(body.payload)
@@ -264,6 +293,20 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
     # Store encrypted entity map — keyed by the new request_id
     if deid_entity_count:
         phi_vault.store(inference_request.request_id, result.entity_map)
+
+    # ── Cache read (skip for PHI tiers) ──────────────────────────────────
+    if cache is not None:
+        try:
+            cached = cache.get(inference_request)
+            if cached is not None:
+                logger.debug(
+                    "route: cache HIT request=%s", inference_request.request_id
+                )
+                return RouteResponse.model_validate(cached)
+        except PHICacheViolation:
+            pass  # expected for phi/phi_strict — silently skip
+        except _redis.RedisError as exc:
+            logger.warning("route: cache read failed: %s", exc)
 
     strategy = RoutingStrategy(body.strategy)
     decision = router.route(inference_request, strategy=strategy)
@@ -301,7 +344,7 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
         )
 
     selected = decision.selected_server
-    return RouteResponse(
+    response = RouteResponse(
         request_id=decision.request_id,
         rejected=decision.rejected,
         rejection_reason=decision.rejection_reason,
@@ -322,6 +365,20 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
         decided_at=decision.decided_at,
         phi_entities_detected=deid_entity_count,
     )
+
+    # ── Cache write (skip for PHI tiers) ──────────────────────────────────
+    if cache is not None:
+        try:
+            cache.set(inference_request, response.model_dump(mode="json"))
+            logger.debug(
+                "route: cache SET request=%s", inference_request.request_id
+            )
+        except PHICacheViolation:
+            pass  # expected for phi/phi_strict — silently skip
+        except _redis.RedisError as exc:
+            logger.warning("route: cache write failed: %s", exc)
+
+    return response
 
 
 # ---------------------------------------------------------------------------

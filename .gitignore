@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+.demo_pids
+*.log
+.env
+scripts/.demo_pids
