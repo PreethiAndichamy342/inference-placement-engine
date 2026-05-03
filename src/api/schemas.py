@@ -271,6 +271,7 @@ class LogEntry(BaseModel):
     routing_latency_ms: float
     rejected: bool
     rejection_reason: str | None = None
+    phi_entities_detected: int = 0
 
 
 class LogsResponse(BaseModel):
@@ -311,6 +312,15 @@ class ErrorDetail(BaseModel):
 # ---------------------------------------------------------------------------
 # POST /de-identify
 # ---------------------------------------------------------------------------
+
+
+class TestPromptsResponse(BaseModel):
+    """Response body for ``GET /test-prompts``."""
+
+    prompts: dict[str, list[str]] = Field(
+        ...,
+        description="Sample prompts grouped by data_sensitivity tier.",
+    )
 
 
 class DeIdentifyRequest(BaseModel):

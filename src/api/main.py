@@ -49,6 +49,7 @@ from src.api.schemas import (
     ScoreEntry,
     ServerMetrics,
     ServerSummary,
+    TestPromptsResponse,
 )
 from src.clouds.base import AdapterError
 import src.demo_servers as demo_servers
@@ -67,6 +68,7 @@ from src.engine.policy import PolicyEngine
 from src.engine.router import PlacementRouter
 from src.phi.de_identifier import DeIdentifier
 from src.phi.vault import PHIVault
+from src.api.test_data import get_sample_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +270,7 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
             routing_latency_ms=decision.routing_latency_ms,
             rejected=decision.rejected,
             rejection_reason=decision.rejection_reason,
+            phi_entities_detected=deid_entity_count,
         )
     )
 
@@ -529,6 +532,27 @@ async def de_identify(body: DeIdentifyRequest, request: Request) -> DeIdentifyRe
         entity_count=result.entity_count,
         entities_by_type=result.entities_by_type,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /test-prompts
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/test-prompts",
+    response_model=TestPromptsResponse,
+    summary="Return sample prompts grouped by data_sensitivity tier",
+)
+async def test_prompts() -> TestPromptsResponse:
+    """
+    Returns fabricated sample prompts for each sensitivity tier, suitable for
+    exercising the de-identification pipeline and routing logic from the
+    dashboard's test panel.
+
+    All PHI in ``phi`` and ``phi_strict`` tiers is entirely fabricated.
+    """
+    return TestPromptsResponse(prompts=get_sample_prompts())
 
 
 # ---------------------------------------------------------------------------

@@ -158,6 +158,7 @@ header {
 .stat-card.blue   { --card-accent: var(--accent); }
 .stat-card.orange { --card-accent: var(--orange); }
 .stat-card.purple { --card-accent: var(--purple); }
+.stat-card.red    { --card-accent: var(--red); }
 
 .stat-icon { font-size: 18px; line-height: 1; margin-bottom: 2px; }
 
@@ -172,6 +173,7 @@ header {
 }
 .stat-card.green  .stat-value { color: var(--green); }
 .stat-card.orange .stat-value { color: var(--orange); }
+.stat-card.red    .stat-value { color: var(--red); }
 
 .stat-label { font-size: 12px; color: var(--text2); }
 .stat-sub   { font-size: 11px; color: var(--text3); margin-top: 2px; }
@@ -818,6 +820,20 @@ tbody td {
 .badge-phi        { background: var(--red-bg);     color: var(--red);     border: 1px solid rgba(239,68,68,.3); }
 .badge-phi_strict { background: rgba(239,68,68,.22); color: #ff8080; border: 1px solid rgba(239,68,68,.5); }
 
+.phi-entity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(239,68,68,.15);
+  color: var(--red);
+  border: 1px solid rgba(239,68,68,.35);
+  white-space: nowrap;
+}
+
 /* Cloud env pills */
 .env { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-sm); white-space: nowrap; }
 .env-aws      { background: var(--orange-bg); color: #fb923c; }
@@ -934,6 +950,12 @@ code { font-family: var(--mono); font-size: 11px; }
         <div class="stat-value" id="stat-latency">—</div>
         <div class="stat-label">Avg Routing Time</div>
         <div class="stat-sub">across recent decisions</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-icon">🛡</div>
+        <div class="stat-value" id="stat-phi-entities">—</div>
+        <div class="stat-label">PHI Entities Detected</div>
+        <div class="stat-sub" id="stat-phi-entities-sub">last routing decision</div>
       </div>
     </div>
   </div>
@@ -1095,6 +1117,7 @@ code { font-family: var(--mono); font-size: 11px; }
               <th>Time</th>
               <th>Tenant</th>
               <th>Sensitivity</th>
+              <th>PHI</th>
               <th>Server</th>
               <th>Cloud Env</th>
               <th>Latency</th>
@@ -1197,33 +1220,40 @@ const state = {
   pollErrors: 0,
   liveTailActive: false,
   liveTailTimer: null,
+  lastPhiEntities: null,   // phi_entities_detected from most recent /route response
+  testPrompts: {},         // tier → string[] loaded from GET /test-prompts
 };
 
+// PRESETS define routing metadata only. The prompt is picked at click-time
+// from state.testPrompts (fetched from GET /test-prompts) so test data
+// lives in Python and the dashboard stays free of hardcoded medical text.
 const PRESETS = {
   public: {
     model_id: 'tinyllama:latest',
-    payload: { prompt: 'What is the recommended first-line treatment for type 2 diabetes?' },
     tenant_id: 'demo_tenant',
     data_sensitivity: 'public',
     strategy: 'least_loaded',
   },
   internal: {
     model_id: 'tinyllama:latest',
-    payload: { prompt: 'Summarise the discharge note structure.' },
     tenant_id: 'demo_tenant',
     data_sensitivity: 'internal',
     strategy: 'round_robin',
   },
+  sensitive: {
+    model_id: 'tinyllama:latest',
+    tenant_id: 'demo_tenant',
+    data_sensitivity: 'sensitive',
+    strategy: 'compliance_first',
+  },
   phi: {
     model_id: 'tinyllama:latest',
-    payload: { prompt: 'Generate a visit summary.' },
     tenant_id: 'hospital_A',
     data_sensitivity: 'phi',
     strategy: 'compliance_first',
   },
   phi_strict: {
     model_id: 'tinyllama:latest',
-    payload: { prompt: 'Process substance use assessment.' },
     tenant_id: 'hospital_A',
     data_sensitivity: 'phi_strict',
     strategy: 'compliance_first',
@@ -1236,6 +1266,22 @@ async function fetchJSON(url) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`HTTP ${resp.status} from ${url}`);
   return resp.json();
+}
+
+async function fetchTestPrompts() {
+  try {
+    const data = await fetchJSON('/test-prompts');
+    state.testPrompts = data.prompts || {};
+    logger.debug('test-prompts loaded');
+  } catch (err) {
+    console.warn('Could not load /test-prompts:', err.message);
+  }
+}
+
+function randomPrompt(tier) {
+  const pool = state.testPrompts[tier];
+  if (!pool || !pool.length) return `Sample ${tier} request.`;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // ── Filter URL builder ────────────────────────────────────────────────────
@@ -1380,6 +1426,25 @@ function renderStatCards() {
     document.getElementById('stat-latency').textContent =
       avg < 1 ? avg.toFixed(3) + ' ms' : avg.toFixed(2) + ' ms';
   }
+
+  // PHI entities: sum from current log entries (shown if any detected)
+  const totalPhiEntities = state.logEntries.reduce(
+    (sum, e) => sum + (e.phi_entities_detected || 0), 0
+  );
+  if (totalPhiEntities > 0 || state.lastPhiEntities !== null) {
+    updatePhiEntityStat();
+  }
+}
+
+function updatePhiEntityStat() {
+  const lastVal = state.lastPhiEntities;
+  const el      = document.getElementById('stat-phi-entities');
+  const sub     = document.getElementById('stat-phi-entities-sub');
+  if (lastVal === null) return;
+  el.textContent  = lastVal;
+  sub.textContent = lastVal === 0
+    ? 'none in last request'
+    : `detected in last request`;
 }
 
 // ── Server health cards ───────────────────────────────────────────────────
@@ -1484,7 +1549,7 @@ function renderLog(newIds = [], total = null, returned = null) {
   }
 
   if (!entries.length) {
-    tbody.innerHTML = `<tr><td colspan="7">
+    tbody.innerHTML = `<tr><td colspan="8">
       <div class="log-empty">
         <div class="empty-icon">📭</div>
         Send a request via the test panel or<br>
@@ -1511,10 +1576,16 @@ function renderLog(newIds = [], total = null, returned = null) {
       ? `<span class="status-rej" title="${esc(e.rejection_reason||'')}">✗ Rejected</span>`
       : `<span class="status-ok">✓ Routed</span>`;
 
+    const phiN   = e.phi_entities_detected || 0;
+    const phiBadge = phiN > 0
+      ? `<span class="phi-entity-badge" title="${phiN} PHI entity${phiN !== 1 ? 'ies' : ''} de-identified">🛡 ${phiN}</span>`
+      : '<span class="text-muted">—</span>';
+
     return `<tr class="${isNew ? 'new-entry' : ''}">
       <td class="mono-sm">${time}</td>
       <td>${esc(e.tenant_id)}</td>
       <td><span class="badge badge-${e.data_sensitivity}">${e.data_sensitivity}</span></td>
+      <td>${phiBadge}</td>
       <td>${server}</td>
       <td>${env}</td>
       <td class="mono-sm ${latCls}">${latMs.toFixed(3)} ms</td>
@@ -1529,6 +1600,10 @@ async function sendPreset(name) {
   const preset = PRESETS[name];
   if (!preset) return;
 
+  // Pick a random prompt from the appropriate tier (loaded from /test-prompts).
+  const tier   = preset.data_sensitivity;
+  const prompt = randomPrompt(tier);
+
   // Merge builder control values over the preset so the user's tenant,
   // strategy, and cloud preference are respected without changing the
   // preset's fixed sensitivity level.
@@ -1536,29 +1611,19 @@ async function sendPreset(name) {
   const strategy  = document.getElementById('cb-strategy')?.value;
   const cloudPref = document.getElementById('cb-cloud-pref')?.value;
 
-  console.log('[sendPreset] name:', name);
-  console.log('[sendPreset] dropdowns — tenant:', tenant, '| strategy:', strategy, '| cloudPref:', cloudPref);
-
-  const body = { ...preset };
+  const body = { ...preset, payload: { prompt } };
   if (tenant)    body.tenant_id = tenant;
   if (strategy)  body.strategy  = strategy;
   if (cloudPref) body.region_hint = cloudPref;
   else           delete body.region_hint;
-
-  console.log('[sendPreset] final body:', JSON.stringify(body, null, 2));
 
   await sendRoute(body, name);
 }
 
 // ── Custom JSON builder ───────────────────────────────────────────────────
 
-const SAMPLE_PROMPTS = {
-  public:     'What is the recommended first-line treatment for type 2 diabetes?',
-  internal:   'Summarise the standard discharge note structure.',
-  sensitive:  'List common risk factors for readmission within 30 days.',
-  phi:        'Generate a visit summary for the patient record.',
-  phi_strict: 'Process substance use assessment — 42 CFR Part 2 data.',
-};
+// Sample prompts are now loaded from GET /test-prompts into state.testPrompts.
+// Use randomPrompt(tier) to pick from the right pool at call-time.
 
 function generateSampleJSON() {
   const tenant      = document.getElementById('cb-tenant').value.trim() || 'hospital_A';
@@ -1568,7 +1633,7 @@ function generateSampleJSON() {
 
   const body = {
     model_id: 'tinyllama:latest',
-    payload:  { prompt: SAMPLE_PROMPTS[sensitivity] || 'Process request.' },
+    payload:  { prompt: randomPrompt(sensitivity) },
     tenant_id: tenant,
     data_sensitivity: sensitivity,
     strategy,
@@ -1647,7 +1712,7 @@ async function sendBurst() {
     const sensitivity = weightedPick(BURST_SENSITIVITY_WEIGHTS);
     const body = {
       model_id:         'tinyllama:latest',
-      payload:          { prompt: SAMPLE_PROMPTS[sensitivity] },
+      payload:          { prompt: randomPrompt(sensitivity) },
       tenant_id:        randPick(BURST_TENANTS),
       data_sensitivity: sensitivity,
       strategy:         randPick(BURST_STRATEGIES),
@@ -1694,12 +1759,16 @@ async function sendRoute(body, label) {
     });
     const data = await resp.json();
     if (resp.ok) {
-      const server = data.selected_server?.server_id || '—';
-      const env    = data.selected_server?.cloud_env  || '—';
+      const server      = data.selected_server?.server_id || '—';
+      const env         = data.selected_server?.cloud_env  || '—';
+      const phiCount    = data.phi_entities_detected ?? 0;
+      state.lastPhiEntities = phiCount;
+      updatePhiEntityStat();
+      const phiNote = phiCount > 0 ? `  🛡 ${phiCount} entity${phiCount !== 1 ? 'ies' : ''} de-id'd` : '';
       showResponse('ok',
-        `✓ Routed → ${server} (${env})  ${data.routing_latency_ms?.toFixed(3)} ms`,
+        `✓ Routed → ${server} (${env})  ${data.routing_latency_ms?.toFixed(3)} ms${phiNote}`,
         JSON.stringify(data, null, 2));
-      toast(`Routed to ${server}`, 'ok');
+      toast(phiCount > 0 ? `Routed to ${server} — ${phiCount} PHI entities de-identified` : `Routed to ${server}`, 'ok');
     } else {
       showResponse('error',
         `✗ ${resp.status} — ${data.detail || 'Rejected'}`,
@@ -1826,6 +1895,7 @@ document.getElementById('log-search')?.addEventListener('keydown', e => {
   if (e.key === 'Enter') { clearTimeout(searchDebounce); fetchFilteredLog(); }
 });
 
+fetchTestPrompts();   // load test prompts from Python — no medical data in JS
 poll();
 setInterval(poll, 5000);
 setInterval(updateClock, 1000);
