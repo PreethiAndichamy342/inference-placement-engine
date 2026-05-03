@@ -477,6 +477,7 @@ function showResponse(type, header, body) {
 // ── Server detail modal ───────────────────────────────────────────────────
 
 function openModal(serverId) {
+  state.currentModalServerId = serverId;
   const server = (state.metrics?.servers || []).find(s => s.server_id === serverId);
   const cb     = (state.circuitStatus?.servers || []).find(s => s.server_id === serverId);
 
@@ -517,12 +518,179 @@ function openModal(serverId) {
   document.getElementById('modal-cb-last-fail').textContent =
     lastFail ? new Date(lastFail * 1000).toLocaleTimeString() : 'None';
 
+  // Clear previous action result
+  const resultEl = document.getElementById('modal-action-result');
+  if (resultEl) resultEl.innerHTML = '';
+
   document.getElementById('modal-overlay').classList.add('visible');
 }
 
 function closeModal(event) {
   if (event && event.target !== document.getElementById('modal-overlay')) return;
   document.getElementById('modal-overlay').classList.remove('visible');
+  state.currentModalServerId = null;
+}
+
+// ── Server Action: Test Health Check ─────────────────────────────────────
+
+async function testHealthCheck() {
+  const serverId = state.currentModalServerId;
+  if (!serverId) return;
+  const resultEl = document.getElementById('modal-action-result');
+  resultEl.innerHTML = '<div class="action-result pending">Probing…</div>';
+  try {
+    const r = await fetchHealthCheck(serverId);
+    const cls = r.status === 'healthy' ? 'ok' : 'error';
+    const latency = r.latency_ms != null ? ` · ${r.latency_ms.toFixed(1)} ms` : '';
+    const errNote = r.error ? `<div class="action-result-detail">${esc(r.error)}</div>` : '';
+    resultEl.innerHTML = `<div class="action-result ${cls}">Health probe: ${r.status}${latency}${errNote}</div>`;
+  } catch (err) {
+    resultEl.innerHTML = `<div class="action-result error">Probe failed: ${esc(err.message)}</div>`;
+  }
+}
+
+// ── Server Action: View Recent Logs ──────────────────────────────────────
+
+async function viewServerLogs() {
+  const serverId = state.currentModalServerId;
+  if (!serverId) return;
+  const resultEl = document.getElementById('modal-action-result');
+  resultEl.innerHTML = '<div class="action-result pending">Fetching logs…</div>';
+  try {
+    const r = await fetchServerLogs(serverId, 10);
+    if (!r.entries.length) {
+      resultEl.innerHTML = '<div class="action-result info">No routing log entries for this server yet.</div>';
+      return;
+    }
+    const rows = r.entries.map(e => {
+      const t   = fmtTime(e.timestamp);
+      const cls = e.rejected ? 'status-rej' : 'status-ok';
+      return `<div class="log-mini-row">
+        <span class="mono-sm">${t}</span>
+        <span class="badge badge-${e.data_sensitivity}">${e.data_sensitivity}</span>
+        <span class="${cls}">${e.rejected ? '✗' : '✓'}</span>
+        <span class="mono-sm text-muted">${e.routing_latency_ms.toFixed(2)} ms</span>
+      </div>`;
+    }).join('');
+    resultEl.innerHTML = `<div class="action-result info">
+      <div class="action-result-title">Last ${r.entries.length} of ${r.total} routes to ${esc(serverId)}</div>
+      <div class="log-mini">${rows}</div>
+    </div>`;
+  } catch (err) {
+    resultEl.innerHTML = `<div class="action-result error">Failed: ${esc(err.message)}</div>`;
+  }
+}
+
+// ── Server Action: Force Health Poll ─────────────────────────────────────
+
+async function runForceHealthPoll() {
+  const serverId = state.currentModalServerId;
+  if (!serverId) return;
+  const resultEl = document.getElementById('modal-action-result');
+  resultEl.innerHTML = '<div class="action-result pending">Forcing health poll…</div>';
+  try {
+    const r   = await forceHealthPoll(serverId);
+    const cls = r.new_status === 'healthy' ? 'ok' : 'error';
+    const changed = r.previous_status !== r.new_status;
+    const latency = r.latency_ms != null ? ` · ${r.latency_ms.toFixed(1)} ms` : '';
+    resultEl.innerHTML = `<div class="action-result ${cls}">
+      ${changed ? `Status changed: ${r.previous_status} → <strong>${r.new_status}</strong>` : `Status confirmed: ${r.new_status}`}${latency}
+    </div>`;
+    flashServerCard(serverId, r.new_status === 'healthy' ? 'green' : 'red');
+    // Refresh modal's health field immediately
+    document.getElementById('modal-health').textContent = r.new_status;
+    const dot = document.getElementById('modal-server-dot');
+    if (dot) dot.className = `server-status-dot ${r.new_status}`;
+    toast(
+      changed ? `${serverId}: ${r.previous_status} → ${r.new_status}` : `${serverId}: ${r.new_status} (confirmed)`,
+      cls,
+    );
+    poll(); // refresh all panels
+  } catch (err) {
+    resultEl.innerHTML = `<div class="action-result error">Poll failed: ${esc(err.message)}</div>`;
+  }
+}
+
+// ── Flash server card ─────────────────────────────────────────────────────
+
+function flashServerCard(serverId, color) {
+  const card = document.querySelector(`.server-card[onclick*="${CSS.escape(serverId)}"]`);
+  if (!card) return;
+  const cls = `flash-${color}`;
+  card.classList.add(cls);
+  setTimeout(() => card.classList.remove(cls), 1200);
+}
+
+// ── Live Diagnostics panel ────────────────────────────────────────────────
+
+function toggleDiagnostics() {
+  state.diagExpanded = !state.diagExpanded;
+  const panel  = document.getElementById('diag-panel');
+  const toggle = document.getElementById('diag-toggle');
+  if (!panel) return;
+  if (state.diagExpanded) {
+    panel.classList.add('open');
+    if (toggle) toggle.textContent = '▼';
+    renderDiagnostics();
+  } else {
+    panel.classList.remove('open');
+    if (toggle) toggle.textContent = '▶';
+  }
+}
+
+function renderDiagnostics() {
+  if (!state.diagExpanded) return;
+  const panel = document.getElementById('diag-panel');
+  if (!panel) return;
+
+  const servers = state.metrics?.servers || [];
+  if (!servers.length) {
+    panel.innerHTML = '<div class="diag-empty">No server metrics available.</div>';
+    return;
+  }
+
+  panel.innerHTML = servers.map(s => {
+    const history = state.latencyHistory[s.server_id] || [];
+    const sparkSvg = renderSparkline(history);
+    const statusCls = s.status === 'healthy' ? 'ok' : s.status === 'degraded' ? 'warn' : 'error';
+    return `<div class="diag-server-row">
+      <div class="diag-server-info">
+        <span class="diag-status-dot ${s.status}"></span>
+        <span class="diag-server-id">${esc(s.server_id)}</span>
+        <span class="diag-status-badge ${statusCls}">${s.status}</span>
+      </div>
+      <div class="diag-sparkline-area" title="Latency history (ms)">
+        ${sparkSvg}
+        <span class="diag-latency-label">${s.avg_latency_ms.toFixed(0)} ms avg</span>
+      </div>
+      <div class="diag-load-label">${Math.round(s.current_load * 100)}% load</div>
+    </div>`;
+  }).join('');
+}
+
+function renderSparkline(history) {
+  const W = 80, H = 24;
+  if (!history.length) {
+    return `<svg class="sparkline" width="${W}" height="${H}"><text x="0" y="${H-2}" font-size="9" fill="var(--text-muted)">no data</text></svg>`;
+  }
+  const values = history.map(h => h.latency_ms);
+  const min    = Math.min(...values);
+  const max    = Math.max(...values) || 1;
+  const range  = max - min || 1;
+
+  const pts = values.map((v, i) => {
+    const x = Math.round((i / Math.max(values.length - 1, 1)) * W);
+    const y = Math.round(H - ((v - min) / range) * (H - 4) - 2);
+    return `${x},${y}`;
+  }).join(' ');
+
+  // Color based on latest status
+  const last   = history[history.length - 1];
+  const stroke = last?.status === 'healthy' ? '#22c55e' : last?.status === 'degraded' ? '#f59e0b' : '#ef4444';
+
+  return `<svg class="sparkline" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    <polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
 }
 
 // ── Toast notifications ───────────────────────────────────────────────────

@@ -13,7 +13,6 @@ async function poll() {
     ]);
 
     state.health        = health;
-    state.metrics       = metrics;
     state.circuitStatus = circuit;
     state.logStats      = stats;
 
@@ -22,10 +21,43 @@ async function poll() {
     newEntries.forEach(e => state.seenIds.add(e.request_id));
     state.logEntries = entries;
 
-    state.connected  = true;
-    state.pollErrors = 0;
+    state.connected     = true;
+    state.pollErrors    = 0;
+    state.lastConnectedAt = new Date();
+
+    // ── Record latency history + detect status changes ────────────────
+    const now     = new Date();
+    let   hasAlert = false;
+
+    (metrics.servers || []).forEach(s => {
+      // Latency history — keep last 20 samples
+      if (!state.latencyHistory[s.server_id]) state.latencyHistory[s.server_id] = [];
+      const hist = state.latencyHistory[s.server_id];
+      hist.push({ ts: now, latency_ms: s.avg_latency_ms, status: s.status });
+      if (hist.length > 20) hist.shift();
+
+      // Status change detection
+      const prev = state.prevServerStatuses[s.server_id];
+      if (prev && prev !== s.status) {
+        const isRecovery = s.status === 'healthy';
+        const type = isRecovery ? 'ok' : 'error';
+        toast(
+          `${s.server_id}: ${prev} → ${s.status}`,
+          type,
+        );
+        flashServerCard(s.server_id, isRecovery ? 'green' : 'red');
+        if (!isRecovery) hasAlert = true;
+      }
+      state.prevServerStatuses[s.server_id] = s.status;
+    });
+
+    state.metrics = metrics;
+
+    // Auto-expand diagnostics on first unhealthy server detection
+    if (hasAlert && !state.diagExpanded) toggleDiagnostics();
 
     renderAll(newEntries.map(e => e.request_id), logs.total, logs.returned);
+    renderDiagnostics();
   } catch (_err) {
     state.pollErrors++;
     if (state.pollErrors >= 2) {

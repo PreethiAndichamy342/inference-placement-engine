@@ -136,3 +136,24 @@ async function postRoute(body) {
   });
   return resp.ok;
 }
+
+// ── Troubleshooting endpoints ─────────────────────────────────────────────
+
+async function fetchHealthCheck(serverId) {
+  return fetchJSON(`/health-check/${encodeURIComponent(serverId)}`);
+}
+
+async function fetchServerLogs(serverId, limit = 20) {
+  return fetchJSON(`/server-logs/${encodeURIComponent(serverId)}?limit=${limit}`);
+}
+
+async function forceHealthPoll(serverId) {
+  const resp = await fetch(`/force-health-poll/${encodeURIComponent(serverId)}`, {
+    method: 'POST',
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.detail || `HTTP ${resp.status}`);
+  }
+  return resp.json();
+}

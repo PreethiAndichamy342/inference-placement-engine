@@ -16,6 +16,12 @@ const state = {
   lastPhiEntities: null,  // phi_entities_detected from most recent /route response
   testPrompts:    {},     // tier → string[] loaded from GET /test-prompts
   expandedIds:    new Set(), // request_ids of currently expanded detail rows
+  // ── Diagnostics & alerts ─────────────────────────────────────────────
+  latencyHistory:       {},   // server_id → [{ts: Date, latency_ms, status}] (last 20)
+  prevServerStatuses:   {},   // server_id → status string from last poll
+  lastConnectedAt:      null, // Date when we last had a successful poll
+  diagExpanded:         false,
+  currentModalServerId: null, // server_id currently shown in the detail modal
 };
 
 // ── Preset routing configurations ─────────────────────────────────────────

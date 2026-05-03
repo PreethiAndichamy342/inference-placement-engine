@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time as _time
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -31,7 +32,8 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from src.api.schemas import (
     CircuitServerStatus,
@@ -39,6 +41,8 @@ from src.api.schemas import (
     DeIdentifyRequest,
     DeIdentifyResponse,
     ErrorDetail,
+    ForceHealthPollResult,
+    HealthCheckResult,
     HealthResponse,
     LogEntry,
     LogsResponse,
@@ -47,6 +51,7 @@ from src.api.schemas import (
     RouteRequest,
     RouteResponse,
     ScoreEntry,
+    ServerLogsResponse,
     ServerMetrics,
     ServerSummary,
     TestPromptsResponse,
@@ -170,6 +175,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Serve the dashboard SPA (index.html + css/ + js/) at /dashboard.
+# html=True makes StaticFiles serve index.html for directory requests.
+_dashboard_dir = Path(__file__).parent.parent.parent / "dashboard"
+app.mount("/dashboard", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")
+
 
 # ---------------------------------------------------------------------------
 # Exception handlers
@@ -227,10 +237,12 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
     # De-identify prompt text if present
     payload = dict(body.payload)
     deid_entity_count = 0
+    phi_entity_breakdown: dict = {}
     if "prompt" in payload and isinstance(payload["prompt"], str):
         result = de_identifier.de_identify(payload["prompt"])
         payload["prompt"] = result.anonymized_text
         deid_entity_count = result.entity_count
+        phi_entity_breakdown = result.entities_by_type
         if result.entity_map:
             logger.debug(
                 "route: de-identified %d entities from prompt for tenant=%s",
@@ -271,6 +283,9 @@ async def route_request(body: RouteRequest, request: Request) -> RouteResponse:
             rejected=decision.rejected,
             rejection_reason=decision.rejection_reason,
             phi_entities_detected=deid_entity_count,
+            candidate_count=len(decision.candidate_servers),
+            score_breakdown=decision.score_breakdown,
+            phi_entity_breakdown=phi_entity_breakdown,
         )
     )
 
@@ -556,12 +571,140 @@ async def test_prompts() -> TestPromptsResponse:
 
 
 # ---------------------------------------------------------------------------
+# GET /health-check/{server_id}
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/health-check/{server_id}",
+    response_model=HealthCheckResult,
+    summary="Directly probe a server's health endpoint and return the result",
+)
+async def health_check_server(server_id: str) -> HealthCheckResult:
+    """
+    Immediately calls the adapter's ``health_check()`` for the given server
+    and returns the raw result with timing. Does **not** update the server's
+    persisted status — use ``POST /force-health-poll/{server_id}`` for that.
+    """
+    adapter = demo_servers.adapters.get(server_id)
+    if adapter is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No adapter registered for server_id '{server_id}'",
+        )
+
+    start = _time.monotonic()
+    error_msg: str | None = None
+    probe_status: ServerStatus = ServerStatus.UNAVAILABLE
+    try:
+        probe_status = adapter.health_check()
+    except Exception as exc:
+        error_msg = str(exc)
+
+    latency_ms = (_time.monotonic() - start) * 1000
+
+    return HealthCheckResult(
+        server_id=server_id,
+        status=probe_status.value,
+        latency_ms=round(latency_ms, 3),
+        error=error_msg,
+        checked_at=datetime.now(tz=timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /server-logs/{server_id}
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/server-logs/{server_id}",
+    response_model=ServerLogsResponse,
+    summary="Return routing log entries that were dispatched to a specific server",
+)
+async def server_logs(
+    server_id: str,
+    request: Request,
+    limit: int = Query(20, ge=1, le=200, description="Max entries to return"),
+) -> ServerLogsResponse:
+    """
+    Filters the in-memory routing log to entries where ``selected_server_id``
+    matches the given server. Returns newest first.
+    """
+    all_entries: list[LogEntry] = list(request.app.state.log)
+    matched = [e for e in all_entries if e.selected_server_id == server_id]
+    total = len(matched)
+    # Newest first
+    matched = list(reversed(matched))[:limit]
+
+    return ServerLogsResponse(server_id=server_id, entries=matched, total=total)
+
+
+# ---------------------------------------------------------------------------
+# POST /force-health-poll/{server_id}
+# ---------------------------------------------------------------------------
+
+
+@app.post(
+    "/force-health-poll/{server_id}",
+    response_model=ForceHealthPollResult,
+    summary="Trigger an immediate health check and update the server's persisted status",
+)
+async def force_health_poll(server_id: str) -> ForceHealthPollResult:
+    """
+    Calls ``adapter.health_check()`` for the given server, updates
+    ``server.status`` in place (same object the router reads), and returns
+    the previous and new status values. Use this to force a recovery check
+    without waiting for the next background poll interval.
+    """
+    adapter = demo_servers.adapters.get(server_id)
+    server  = next((s for s in demo_servers.servers if s.server_id == server_id), None)
+
+    if adapter is None or server is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No server registered with server_id '{server_id}'",
+        )
+
+    previous_status = server.status
+
+    start = _time.monotonic()
+    latency_ms: float | None = None
+    try:
+        new_status_enum = adapter.health_check()
+        latency_ms = round((_time.monotonic() - start) * 1000, 3)
+        server.status = new_status_enum
+    except Exception as exc:
+        latency_ms = round((_time.monotonic() - start) * 1000, 3)
+        server.status = ServerStatus.UNAVAILABLE
+        new_status_enum = ServerStatus.UNAVAILABLE
+        logger.warning(
+            "force-health-poll: server=%s probe failed: %s", server_id, exc
+        )
+
+    logger.info(
+        "force-health-poll: server=%s %s → %s (%.1f ms)",
+        server_id,
+        previous_status.value,
+        new_status_enum.value,
+        latency_ms or 0,
+    )
+
+    return ForceHealthPollResult(
+        server_id=server_id,
+        previous_status=previous_status.value,
+        new_status=new_status_enum.value,
+        latency_ms=latency_ms,
+        polled_at=datetime.now(tz=timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
 # GET /dashboard
 # ---------------------------------------------------------------------------
 
 
 @app.get("/dashboard", include_in_schema=False)
-async def dashboard() -> Response:
-    """Serve the CloudWatch-style log viewer dashboard."""
-    html_path = Path(__file__).parent.parent.parent / "dashboard" / "index.html"
-    return Response(content=html_path.read_text(), media_type="text/html")
+async def dashboard() -> RedirectResponse:
+    """Redirect bare /dashboard to the StaticFiles mount for backwards compatibility."""
+    return RedirectResponse(url="/dashboard/")

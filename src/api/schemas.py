@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+
 # ---------------------------------------------------------------------------
 # Shared enums (string literals — Pydantic validates membership automatically)
 # ---------------------------------------------------------------------------
@@ -272,6 +273,9 @@ class LogEntry(BaseModel):
     rejected: bool
     rejection_reason: str | None = None
     phi_entities_detected: int = 0
+    candidate_count: int = 0
+    score_breakdown: dict[str, dict[str, float]] = Field(default_factory=dict)
+    phi_entity_breakdown: dict[str, int] = Field(default_factory=dict)
 
 
 class LogsResponse(BaseModel):
@@ -307,6 +311,58 @@ class ErrorDetail(BaseModel):
     error: str
     detail: str | None = None
     request_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# GET /health-check/{server_id}
+# ---------------------------------------------------------------------------
+
+
+class HealthCheckResult(BaseModel):
+    """Response body for ``GET /health-check/{server_id}``."""
+
+    server_id: str
+    status: ServerStatusLiteral
+    latency_ms: float | None = Field(
+        None,
+        description="Round-trip time of the health probe in milliseconds.",
+    )
+    error: str | None = Field(
+        None,
+        description="Error message if the probe failed.",
+    )
+    checked_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# GET /server-logs/{server_id}
+# ---------------------------------------------------------------------------
+
+
+class ServerLogsResponse(BaseModel):
+    """Response body for ``GET /server-logs/{server_id}``."""
+
+    server_id: str
+    entries: list[LogEntry]
+    total: int = Field(..., description="Number of matching log entries returned.")
+
+
+# ---------------------------------------------------------------------------
+# POST /force-health-poll/{server_id}
+# ---------------------------------------------------------------------------
+
+
+class ForceHealthPollResult(BaseModel):
+    """Response body for ``POST /force-health-poll/{server_id}``."""
+
+    server_id: str
+    previous_status: ServerStatusLiteral
+    new_status: ServerStatusLiteral
+    latency_ms: float | None = Field(
+        None,
+        description="Round-trip time of the forced probe in milliseconds.",
+    )
+    polled_at: datetime
 
 
 # ---------------------------------------------------------------------------

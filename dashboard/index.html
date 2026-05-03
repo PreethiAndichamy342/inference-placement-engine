@@ -71,6 +71,15 @@
     </div>
   </div>
 
+  <!-- Live Diagnostics panel -->
+  <div>
+    <div class="section-label diag-header" onclick="toggleDiagnostics()">
+      <span>📊 Live Diagnostics</span>
+      <span class="diag-toggle" id="diag-toggle">▶</span>
+    </div>
+    <div id="diag-panel" class="diag-panel"></div>
+  </div>
+
   <!-- Bottom split: test panel + routing log -->
   <div class="bottom-split">
 
@@ -301,6 +310,15 @@
           <span class="modal-row-label">Last Failure</span>
           <span class="modal-row-value" id="modal-cb-last-fail">—</span>
         </div>
+      </div>
+      <div>
+        <div class="modal-section-label">Server Actions</div>
+        <div class="modal-actions">
+          <button class="modal-action-btn" onclick="testHealthCheck()">🔍 Test Health</button>
+          <button class="modal-action-btn" onclick="viewServerLogs()">📋 View Logs</button>
+          <button class="modal-action-btn primary" onclick="runForceHealthPoll()">⚡ Force Poll</button>
+        </div>
+        <div id="modal-action-result"></div>
       </div>
     </div>
   </div>
