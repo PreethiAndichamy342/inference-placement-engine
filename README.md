@@ -229,3 +229,17 @@ Phase 2 scoring:
 
 Result: routed to on-prem, PHI never leaves the compliant environment.
 ```
+
+---
+
+## Future Enhancements
+
+| Enhancement | Description |
+|---|---|
+| **Real-time system diagnostics** | Port reachability checks, process-level health probes, and auto-fix suggestions (e.g. restart a downed adapter, drain a degraded node) surfaced directly in the dashboard |
+| **Kafka event streaming** | Publish every routing decision to a Kafka topic so downstream consumers (audit systems, billing, analytics pipelines) can subscribe without polling the API |
+| **Zero-trust authentication** | mTLS between the engine and each inference adapter; SPIFFE/SPIRE workload identity so no long-lived secrets are needed in the deployment environment |
+| **EHR connector (FHIR R4 / HL7 v2)** | Accept inference requests expressed as FHIR `Task` resources or HL7 ADT/ORU messages and translate them into the engine's internal routing schema |
+| **Real cloud deployment** | Replace the local Ollama simulation with vLLM endpoints running on actual AWS (EC2 / EKS) and GCP (GKE / Cloud Run) nodes, with Terraform modules for provisioning |
+| **Grafana + Prometheus metrics export** | Expose a `/metrics` Prometheus scrape endpoint and ship a Grafana dashboard JSON for routing latency histograms, rejection rates, and PHI entity counts per tenant |
+| **Alert routing** | Push status-change events to PagerDuty (on-call escalation) and Slack (channel notifications) when a server goes unavailable or a circuit breaker opens |
