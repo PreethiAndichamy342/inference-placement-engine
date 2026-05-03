@@ -4,6 +4,12 @@ A HIPAA-aware inference placement router that selects the best cloud or on-premi
 
 ---
 
+![Production Support Dashboard](docs/dashboard-screenshot.png)
+
+*Live dashboard showing 8 routed requests across public, internal, and PHI tiers — aws-sim and on-prem healthy, gcp-sim unavailable, avg routing time 0.232 ms.*
+
+---
+
 ## Problem
 
 Healthcare ML workloads span a spectrum of data sensitivity. A de-identified risk-scoring model can run on any public cloud, but a request containing full PHI must never leave a HIPAA-compliant environment with a signed BAA. Manually enforcing these rules across AWS, GCP, and on-prem clusters is error-prone and slows down both engineering and compliance teams.
