@@ -7,3 +7,6 @@ presidio-analyzer
 presidio-anonymizer
 spacy
 cryptography
+pydantic
+pytest
+httpx
