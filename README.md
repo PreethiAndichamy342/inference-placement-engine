@@ -6,7 +6,7 @@ A HIPAA-aware inference placement router that selects the best cloud or on-premi
 
 ![Production Support Dashboard](docs/dashboard-screenshot.png)
 
-*Live dashboard showing 8 routed requests across public, internal, and PHI tiers — aws-sim and on-prem healthy, gcp-sim unavailable, avg routing time 0.232 ms.*
+*Live dashboard showing 18 routed requests — aws-sim (p99 6.4 ms) and on-prem (p99 7.9 ms) healthy, gcp-sim unavailable (p99 886.9 ms from timeout). Avg routing decision time 0.207 ms.*
 
 ---
 
