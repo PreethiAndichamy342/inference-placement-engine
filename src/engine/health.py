@@ -282,15 +282,29 @@ class HealthWatcher:
         logger.debug("health: poll loop exited for server=%s", server_id)
 
     def _probe(self, entry: _AdapterEntry) -> None:
-        """Execute one health_check() call and update server.status."""
+        """Execute one health_check() call and update server.status and p99_latency_ms."""
         server_id = entry.server.server_id
         try:
+            t0 = time.monotonic()
             status = entry.adapter.health_check()
+            probe_ms = (time.monotonic() - t0) * 1000
             entry.last_checked_at = time.monotonic()
+
+            # Feed the health-check round-trip into the adapter's latency deque
+            # so p99_latency_ms reflects real network RTT to the backend.
+            # Then read back the current p99 (returns 0.0 when deque is empty).
+            try:
+                if hasattr(entry.adapter, "_latency_deque"):
+                    entry.adapter._latency_deque.append(probe_ms)
+                p99 = entry.adapter.get_latency_p99()
+            except Exception:  # noqa: BLE001
+                p99 = None
 
             with entry.lock:
                 previous = entry.server.status
                 entry.server.status = status
+                if p99 is not None:
+                    entry.server.p99_latency_ms = p99
 
             if status == ServerStatus.HEALTHY:
                 if entry.consecutive_failures > 0:
