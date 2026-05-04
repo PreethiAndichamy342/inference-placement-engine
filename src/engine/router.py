@@ -39,7 +39,7 @@ def _select_latency_optimized(
     """Pick the server with the lowest rolling-average latency."""
     if not servers:
         return None
-    return min(servers, key=lambda s: s.avg_latency_ms)
+    return min(servers, key=lambda s: s.p99_latency_ms)
 
 
 def _select_cost_optimized(
@@ -279,7 +279,7 @@ class PlacementRouter:
         return {
             s.server_id: {
                 "current_load":   s.current_load,
-                "avg_latency_ms": s.avg_latency_ms,
+                "p99_latency_ms": s.p99_latency_ms,
                 "cost_per_token": s.cost_per_token,
                 "gpu_count":      float(s.gpu_count),
             }

@@ -437,7 +437,7 @@ async def metrics(request: Request) -> MetricsResponse:
                 region=s.region,
                 status=s.status.value,
                 current_load=s.current_load,
-                avg_latency_ms=s.avg_latency_ms,
+                p99_latency_ms=s.p99_latency_ms,
                 cost_per_token=s.cost_per_token,
                 gpu_count=s.gpu_count,
                 gpu_type=s.gpu_type,

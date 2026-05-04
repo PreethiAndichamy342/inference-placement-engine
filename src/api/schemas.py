@@ -143,7 +143,7 @@ class ScoreEntry(BaseModel):
     """Per-server numeric scores captured at routing time."""
 
     current_load: float
-    avg_latency_ms: float
+    p99_latency_ms: float
     cost_per_token: float
     gpu_count: float
 
@@ -211,7 +211,7 @@ class ServerMetrics(BaseModel):
     region: str
     status: ServerStatusLiteral
     current_load: float = Field(..., ge=0.0, le=1.0)
-    avg_latency_ms: float = Field(..., ge=0.0)
+    p99_latency_ms: float = Field(..., ge=0.0)
     cost_per_token: float = Field(..., ge=0.0)
     gpu_count: int = Field(..., ge=0)
     gpu_type: str | None

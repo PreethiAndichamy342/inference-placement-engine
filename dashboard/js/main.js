@@ -33,7 +33,7 @@ async function poll() {
       // Latency history — keep last 20 samples
       if (!state.latencyHistory[s.server_id]) state.latencyHistory[s.server_id] = [];
       const hist = state.latencyHistory[s.server_id];
-      hist.push({ ts: now, latency_ms: s.avg_latency_ms, status: s.status });
+      hist.push({ ts: now, latency_ms: s.p99_latency_ms, status: s.status });
       if (hist.length > 20) hist.shift();
 
       // Status change detection

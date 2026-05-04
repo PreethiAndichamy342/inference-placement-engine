@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections import deque
 from typing import Any
 
 import requests
@@ -79,6 +80,7 @@ class OnPremAdapter(CloudAdapter):
 
         self._session = self._build_session(connect_retries)
         self._circuit = circuit_breaker or CircuitBreaker(server_id=server_id)
+        self._latency_deque: deque[float] = deque(maxlen=100)
 
     # ------------------------------------------------------------------
     # CloudAdapter interface
@@ -110,6 +112,7 @@ class OnPremAdapter(CloudAdapter):
         body = self._build_completion_body(request)
         url = f"{self._base_url}/v1/completions"
 
+        t0 = time.monotonic()
         try:
             resp = self._session.post(url, json=body, timeout=self._timeout)
         except requests.exceptions.Timeout as exc:
@@ -130,13 +133,17 @@ class OnPremAdapter(CloudAdapter):
                 server_id=self._server_id,
             )
 
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        self._latency_deque.append(elapsed_ms)
+
         data: dict[str, Any] = resp.json()
         request_id: str = data.get("id") or request.request_id
         logger.debug(
-            "on_prem: enqueued request=%s → vllm_id=%s server=%s",
+            "on_prem: enqueued request=%s → vllm_id=%s server=%s latency=%.1fms",
             request.request_id,
             request_id,
             self._server_id,
+            elapsed_ms,
         )
         return request_id
 
@@ -154,28 +161,19 @@ class OnPremAdapter(CloudAdapter):
 
     def get_latency_p99(self) -> float:
         """
-        Estimate p99 latency in milliseconds from vLLM's Prometheus histogram.
+        Return the 99th-percentile request latency in milliseconds, calculated
+        from the last 100 completed requests measured in ``_enqueue_once``.
 
-        vLLM exposes ``vllm:e2e_request_latency_seconds_bucket`` histogram
-        buckets. We use the ``_sum / _count`` mean as a proxy when a true
-        p99 quantile is not available in the text format. Returns 0.0 on any
-        metric scrape failure.
+        Uses the standard nearest-rank formula: index = floor(n * 0.99), which
+        equals index 99 (the max) when the deque is full at 100 samples.
+
+        Returns 0.0 when no requests have been recorded yet.
         """
-        metrics = self._fetch_prometheus_metrics()
-        if metrics is None:
+        if not self._latency_deque:
             return 0.0
-
-        total_seconds = self._parse_gauge(metrics, f"{_METRIC_E2E_P99}_sum")
-        count = self._parse_gauge(metrics, f"{_METRIC_E2E_P99}_count")
-
-        if not total_seconds or not count or count == 0:
-            return 0.0
-
-        mean_ms = (total_seconds / count) * 1000
-        # Apply a conservative p99 ≈ 2× mean heuristic when bucket data is
-        # unavailable. Callers relying on this should prefer _sum/_count mean
-        # and treat the value as approximate.
-        return round(mean_ms * 2, 2)
+        samples = sorted(self._latency_deque)
+        idx = int(len(samples) * 0.99)
+        return round(samples[idx], 2)
 
     def get_active_connections(self) -> int:
         """

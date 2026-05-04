@@ -111,7 +111,7 @@ Returns a snapshot of load, latency, cost, and status for every registered serve
       "region": "local",
       "status": "healthy",
       "current_load": 0.0,
-      "avg_latency_ms": 0.0,
+      "p99_latency_ms": 0.0,
       "cost_per_token": 0.0,
       "gpu_count": 1,
       "gpu_type": "A100"
@@ -182,7 +182,7 @@ curl -X POST http://localhost:8000/route \
   },
   "candidate_count": 1,
   "score_breakdown": {
-    "on-prem-01": {"current_load": 0.0, "avg_latency_ms": 0.0, "cost_per_token": 0.0, "gpu_count": 1.0}
+    "on-prem-01": {"current_load": 0.0, "p99_latency_ms": 0.0, "cost_per_token": 0.0, "gpu_count": 1.0}
   },
   "routing_latency_ms": 0.156,
   "decided_at": "2026-05-01T22:20:19Z"
@@ -216,7 +216,7 @@ Servers that pass Phase 1 are ranked by the chosen strategy:
 |---------------------|--------------------------------------------------------|
 | `compliance_first`  | Highest `max_sensitivity` clearance wins               |
 | `least_loaded`      | Lowest `current_load` wins                             |
-| `latency_optimized` | Lowest `avg_latency_ms` wins                           |
+| `latency_optimized` | Lowest `p99_latency_ms` wins (measured from last 100 requests) |
 | `cost_optimized`    | Lowest `cost_per_token` wins                           |
 | `round_robin`       | Cycles through eligible servers in registration order  |
 

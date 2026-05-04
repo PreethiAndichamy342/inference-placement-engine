@@ -109,12 +109,12 @@ function renderServerCards() {
 
   grid.innerHTML = servers.map(s => {
     const loadPct  = Math.round((s.current_load || 0) * 100);
-    const latPct   = Math.min(100, Math.round(((s.avg_latency_ms || 0) / 1000) * 100));
+    const latPct   = Math.min(100, Math.round(((s.p99_latency_ms || 0) / 1000) * 100));
     const loadClass =
       loadPct < 50 ? 'load-low' : loadPct < 80 ? 'load-medium' : 'load-high';
     const latClass =
-      (s.avg_latency_ms || 0) < 200 ? 'latency-low' :
-      (s.avg_latency_ms || 0) < 600 ? 'latency-medium' : 'latency-high';
+      (s.p99_latency_ms || 0) < 200 ? 'latency-low' :
+      (s.p99_latency_ms || 0) < 600 ? 'latency-medium' : 'latency-high';
     const gpuInfo  = s.gpu_count > 0 ? `${s.gpu_count}× ${s.gpu_type || 'GPU'}` : 'CPU only';
 
     const cb      = cbMap[s.server_id];
@@ -146,8 +146,8 @@ function renderServerCards() {
         </div>
         <div class="bar-row">
           <div class="bar-label-row">
-            <span class="bar-label">Avg Latency</span>
-            <span class="bar-value">${(s.avg_latency_ms || 0).toFixed(1)} ms</span>
+            <span class="bar-label">p99 Latency</span>
+            <span class="bar-value">${(s.p99_latency_ms || 0).toFixed(1)} ms</span>
           </div>
           <div class="bar-track">
             <div class="bar-fill ${latClass}" style="width:${latPct}%"></div>
@@ -312,7 +312,7 @@ function buildDetailPanel(e) {
       return `<tr class="${isSelected ? 'score-selected' : ''}">
         <td>${esc(sid)}${isSelected ? ' ★' : ''}</td>
         <td>${((s.current_load || 0) * 100).toFixed(1)}%</td>
-        <td>${(s.avg_latency_ms || 0).toFixed(1)} ms</td>
+        <td>${(s.p99_latency_ms || 0).toFixed(1)} ms</td>
         <td>$${(s.cost_per_token || 0).toFixed(5)}</td>
       </tr>`;
     }).join('');
@@ -320,7 +320,7 @@ function buildDetailPanel(e) {
     <div class="dp-section">
       <div class="dp-section-title">Candidate Scores</div>
       <table class="score-table">
-        <thead><tr><th>Server</th><th>Load</th><th>Latency</th><th>Cost/1K</th></tr></thead>
+        <thead><tr><th>Server</th><th>Load</th><th>p99 Latency</th><th>Cost/1K</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -493,7 +493,7 @@ function openModal(serverId) {
   document.getElementById('modal-load').textContent    =
     server != null ? `${(server.current_load * 100).toFixed(1)}%` : '—';
   document.getElementById('modal-latency').textContent =
-    server != null ? `${server.avg_latency_ms.toFixed(1)} ms` : '—';
+    server != null ? `${server.p99_latency_ms.toFixed(1)} ms` : '—';
 
   const cbState  = cb?.state || 'closed';
   const cbDot    = document.getElementById('modal-cb-dot');
@@ -661,7 +661,7 @@ function renderDiagnostics() {
       </div>
       <div class="diag-sparkline-area" title="Latency history (ms)">
         ${sparkSvg}
-        <span class="diag-latency-label">${s.avg_latency_ms.toFixed(0)} ms avg</span>
+        <span class="diag-latency-label">${s.p99_latency_ms.toFixed(0)} ms p99</span>
       </div>
       <div class="diag-load-label">${Math.round(s.current_load * 100)}% load</div>
     </div>`;

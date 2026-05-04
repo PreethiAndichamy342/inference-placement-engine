@@ -157,7 +157,7 @@ class CloudServer:
         gpu_type:           GPU model string, e.g. "A100", "T4" (None if CPU-only).
         status:             Operational health status.
         current_load:       Fraction of capacity in use (0.0–1.0).
-        avg_latency_ms:     Rolling average inference latency in milliseconds.
+        p99_latency_ms:     Rolling average inference latency in milliseconds.
         cost_per_token:     Estimated cost in USD per 1 K tokens (for LLMs).
         tags:               Arbitrary labels for policy matching.
     """
@@ -174,7 +174,7 @@ class CloudServer:
     gpu_type: str | None = None
     status: ServerStatus = ServerStatus.HEALTHY
     current_load: float = 0.0
-    avg_latency_ms: float = 0.0
+    p99_latency_ms: float = 0.0
     cost_per_token: float = 0.0
     tags: dict[str, str] = field(default_factory=dict)
 
