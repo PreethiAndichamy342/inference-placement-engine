@@ -166,6 +166,24 @@ curl -X POST http://localhost:8000/route \
   }'
 ```
 
+**Example — high-priority IVR stat request with SLA ceiling:**
+
+```bash
+curl -X POST http://localhost:8000/route \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_id": "tinyllama:latest",
+    "payload": {"prompt": "Rapid sepsis risk score for ICU patient"},
+    "tenant_id": "hospital_A",
+    "data_sensitivity": "sensitive",
+    "strategy": "latency_optimized",
+    "priority": 9,
+    "max_latency_ms": 500
+  }'
+```
+
+The router runs compliance filtering first, then drops any server whose `p99_latency_ms` exceeds `max_latency_ms`. If no server survives the SLA cut, the request is rejected with HTTP 503 and a message showing the best available p99 so the caller knows how far off the ceiling they are.
+
 **Response:**
 
 ```json

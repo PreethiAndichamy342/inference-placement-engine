@@ -172,6 +172,37 @@ class PlacementRouter:
         policy_result: PolicyResult = self._policy.evaluate(pool, request)
         eligible = policy_result.eligible_servers
 
+        # ── SLA filter — drop servers that can't meet the latency ceiling ──
+        if request.max_latency_ms is not None and eligible:
+            sla_eligible = [
+                s for s in eligible if s.p99_latency_ms <= request.max_latency_ms
+            ]
+            if not sla_eligible:
+                routing_latency_ms = (time.monotonic() - t_start) * 1000
+                rejection_reason = (
+                    f"No server meets SLA ceiling of {request.max_latency_ms:.0f} ms "
+                    f"(best p99: {min(s.p99_latency_ms for s in eligible):.1f} ms)"
+                )
+                logger.warning(
+                    "router: SLA unmet for request=%s max_latency_ms=%.0f "
+                    "eligible=%d — %s",
+                    request.request_id,
+                    request.max_latency_ms,
+                    len(eligible),
+                    rejection_reason,
+                )
+                return RoutingDecision(
+                    request_id=request.request_id,
+                    strategy_used=chosen_strategy,
+                    selected_server=None,
+                    rejected=True,
+                    rejection_reason=rejection_reason,
+                    candidate_servers=pool,
+                    score_breakdown=self._build_score_breakdown(pool),
+                    routing_latency_ms=routing_latency_ms,
+                )
+            eligible = sla_eligible
+
         selected = self._select(eligible, request, chosen_strategy)
 
         routing_latency_ms = (time.monotonic() - t_start) * 1000
