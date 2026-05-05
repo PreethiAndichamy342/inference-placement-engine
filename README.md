@@ -24,6 +24,10 @@ This engine solves that by making placement policy-driven and automatic:
 
 ## Architecture
 
+![End-to-End Architecture](docs/architecture-with-sla.png)
+
+*Complete system showing PHI gate, policy filtering, SLA-aware routing with p99 latency, and multi-cloud execution*
+
 ```
 Client
   │
@@ -55,31 +59,150 @@ FastAPI app  (src/api/main.py)
 
 ---
 
-## Quick start
+## What This Implements
 
-**Prerequisites:** Python 3.11+, [Ollama](https://ollama.com) installed.
+Each feature in this engine maps directly to concepts covered in these articles:
+
+| Feature | Article |
+|---------|---------|
+| HIPAA-aware routing — PHI detection, sensitivity tiers, BAA enforcement | [*Link to your Medium article*](#) |
+| p99 latency tracking and SLA-aware server filtering | [*Link to your Medium article*](#) |
+| Multi-cloud placement with compliance-first policy engine | [*Link to your Medium article*](#) |
+| Redis-backed inference result cache with PHI gate | [*Link to your Medium article*](#) |
+| Circuit breaker pattern for adapter fault tolerance | [*Link to your Medium article*](#) |
+| PHI de-identification pipeline with entity vault | [*Link to your Medium article*](#) |
+
+> Replace the placeholder links above with your published Medium article URLs.
+
+---
+
+## Prerequisites
+
+### All platforms
+
+- **Python 3.11+**
+- **[Ollama](https://ollama.com)** — runs local LLM inference
+- **Git**
+- **Redis** (optional — caching is disabled gracefully if unavailable)
+
+### macOS
 
 ```bash
-# 1. Clone and install dependencies
-git clone <repo-url>
-cd inference-placement-engine
-pip install -r requirements.txt
+# Install Homebrew if not already installed
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# 2. Pull the demo model
-ollama pull tinyllama
-
-# 3. Start three simulated cloud environments (AWS / GCP / on-prem)
-./scripts/start_demo.sh
-
-# 4. Start the placement engine
-ON_PREM_MODEL_ID=tinyllama:latest ON_PREM_BASE_URL=http://localhost:11436 \
-  uvicorn src.api.main:app --port 8000
-
-# 5. Stop demo instances when done
-./scripts/stop_demo.sh
+brew install python@3.11 git redis
+brew install --cask ollama
 ```
 
-Browse the interactive API docs at **http://localhost:8000/docs**.
+### Linux (Ubuntu / Debian)
+
+```bash
+sudo apt update
+sudo apt install -y python3.11 python3.11-venv python3-pip git curl redis-server
+
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+### Windows (WSL2 recommended)
+
+1. Install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) with Ubuntu:
+   ```powershell
+   wsl --install
+   ```
+2. Open the Ubuntu terminal and follow the **Linux** instructions above.
+3. Install [Ollama for Windows](https://ollama.com/download/windows) natively, or run it inside WSL2.
+
+> Native Windows (PowerShell without WSL) is not supported — the demo scripts use bash.
+
+### Chromebook (Linux via Crostini)
+
+1. Enable Linux: **Settings → Advanced → Developers → Linux development environment → Turn On**
+2. Open the Linux terminal and follow the **Linux (Ubuntu / Debian)** instructions above.
+
+---
+
+## Setup
+
+### 1. Clone and install dependencies
+
+```bash
+git clone https://github.com/PreethiAndichamy342/inference-placement-engine.git
+cd inference-placement-engine
+pip install -r requirements.txt
+```
+
+### 2. Pull the demo model
+
+```bash
+ollama pull tinyllama
+```
+
+### 3. (Optional) Start Redis
+
+Caching is disabled gracefully if Redis is unavailable, but enabling it gives you routing result caching for non-PHI requests.
+
+**macOS:**
+```bash
+brew services start redis
+```
+
+**Linux / Chromebook:**
+```bash
+sudo service redis-server start
+```
+
+**Windows (WSL2):**
+```bash
+sudo service redis-server start
+```
+
+### 4. Start three simulated cloud environments
+
+```bash
+bash scripts/start_demo.sh
+```
+
+Expected output:
+```
+[aws]    PID XXXX on port 11434
+[gcp]    PID XXXX on port 11435
+[onprem] PID XXXX on port 11436
+Model: tinyllama:latest available on all instances.
+```
+
+### 5. Start the placement engine
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uvicorn src.api.main:app --reload --port 8000
+```
+
+### 6. Verify everything is running
+
+```bash
+curl -s http://localhost:8000/health | python3 -m json.tool
+```
+
+Expected:
+```json
+{
+  "status": "ok",
+  "healthy_server_count": 3,
+  "total_server_count": 3,
+  "checked_at": "..."
+}
+```
+
+Browse the interactive API docs at **http://localhost:8000/docs**  
+Browse the live dashboard at **http://localhost:8000/dashboard**
+
+### 7. Stop demo instances when done
+
+```bash
+bash scripts/stop_demo.sh
+```
 
 ---
 
@@ -92,11 +215,15 @@ Returns app liveness and the count of healthy servers.
 ```json
 {
   "status": "ok",
-  "healthy_server_count": 1,
-  "total_server_count": 1,
-  "checked_at": "2026-05-01T22:20:02Z"
+  "healthy_server_count": 3,
+  "total_server_count": 3,
+  "checked_at": "2026-05-05T16:55:55Z"
 }
 ```
+
+Returns `status: degraded` (still HTTP 200) when no servers are healthy, so load-balancer health checks don't immediately pull the instance.
+
+---
 
 ### `GET /metrics`
 
@@ -117,9 +244,11 @@ Returns a snapshot of load, latency, cost, and status for every registered serve
       "gpu_type": "A100"
     }
   ],
-  "collected_at": "2026-05-01T22:20:06Z"
+  "collected_at": "2026-05-05T16:55:55Z"
 }
 ```
+
+---
 
 ### `POST /route`
 
@@ -127,16 +256,18 @@ Routes an inference request to the best eligible server.
 
 **Request body:**
 
-| Field             | Type   | Required | Description                                                        |
-|-------------------|--------|----------|--------------------------------------------------------------------|
-| `model_id`        | string | yes      | Model to invoke, e.g. `"tinyllama:latest"`                        |
-| `payload`         | object | yes      | Input passed verbatim to the inference server                      |
-| `tenant_id`       | string | yes      | Identifier of the requesting organisation                          |
-| `data_sensitivity`| string | no       | `public` / `internal` / `sensitive` / `phi` / `phi_strict` (default: `internal`) |
-| `strategy`        | string | no       | `compliance_first` / `least_loaded` / `latency_optimized` / `cost_optimized` / `round_robin` (default: `compliance_first`) |
-| `task_type`       | string | no       | `general` / `clinical_nlp` / `medical_imaging` / `risk_scoring` / etc. |
-| `max_latency_ms`  | float  | no       | Soft SLA ceiling in milliseconds                                   |
-| `priority`        | int    | no       | 1–10, higher = more important (default: 5)                         |
+| Field              | Type   | Required | Description |
+|--------------------|--------|----------|-------------|
+| `model_id`         | string | yes      | Model to invoke, e.g. `"tinyllama:latest"` |
+| `payload`          | object | yes      | Input passed verbatim to the inference server |
+| `tenant_id`        | string | yes      | Identifier of the requesting organisation |
+| `data_sensitivity` | string | no       | `public` / `internal` / `sensitive` / `phi` / `phi_strict` (default: `internal`) |
+| `strategy`         | string | no       | `compliance_first` / `least_loaded` / `latency_optimized` / `cost_optimized` / `round_robin` (default: `compliance_first`) |
+| `task_type`        | string | no       | `general` / `clinical_nlp` / `medical_imaging` / `risk_scoring` / etc. |
+| `max_latency_ms`   | float  | no       | Soft SLA ceiling — servers with p99 above this are excluded |
+| `priority`         | int    | no       | 1–10, higher = more important (default: 5) |
+| `region_hint`      | string | no       | Preferred cloud region hint |
+| `metadata`         | object | no       | Arbitrary key-value metadata passed through to the log |
 
 **Example — public request:**
 
@@ -166,7 +297,7 @@ curl -X POST http://localhost:8000/route \
   }'
 ```
 
-**Example — high-priority IVR stat request with SLA ceiling:**
+**Example — high-priority stat request with SLA ceiling:**
 
 ```bash
 curl -X POST http://localhost:8000/route \
@@ -203,7 +334,179 @@ The router runs compliance filtering first, then drops any server whose `p99_lat
     "on-prem-01": {"current_load": 0.0, "p99_latency_ms": 0.0, "cost_per_token": 0.0, "gpu_count": 1.0}
   },
   "routing_latency_ms": 0.156,
-  "decided_at": "2026-05-01T22:20:19Z"
+  "phi_entities_detected": 0,
+  "decided_at": "2026-05-05T16:55:55Z"
+}
+```
+
+---
+
+### `POST /de-identify`
+
+De-identifies free text and returns the anonymised version with a per-type entity breakdown. The entity map (token → original value) is **not** returned — it is stored securely in PHIVault keyed by `request_id` when routing via `POST /route`.
+
+**Request body:**
+
+| Field  | Type   | Required | Description |
+|--------|--------|----------|-------------|
+| `text` | string | yes      | Free text to de-identify |
+
+**Example:**
+
+```bash
+curl -X POST http://localhost:8000/de-identify \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Patient Jane Smith, DOB 1985-03-12, SSN 123-45-6789"}'
+```
+
+**Response:**
+
+```json
+{
+  "anonymized_text": "Patient <PERSON>, DOB <DATE>, SSN <US_SSN>",
+  "entity_count": 3,
+  "entities_by_type": {"PERSON": 1, "DATE": 1, "US_SSN": 1}
+}
+```
+
+---
+
+### `GET /logs`
+
+Queries the in-memory routing decision log (last 500 entries). No payload or PHI text is ever stored.
+
+**Query parameters:**
+
+| Parameter     | Type    | Description |
+|---------------|---------|-------------|
+| `sensitivity` | string  | Filter by `data_sensitivity` tier |
+| `tenant_id`   | string  | Filter by exact tenant ID |
+| `cloud_env`   | string  | Filter by cloud environment |
+| `rejected`    | boolean | `true` = rejected only, `false` = accepted only |
+| `limit`       | int     | Max entries to return, 1–500 (default: 50) |
+| `search`      | string  | Case-insensitive match on `request_id` or `tenant_id` |
+
+**Example:**
+
+```bash
+curl "http://localhost:8000/logs?sensitivity=phi_strict&limit=10"
+```
+
+---
+
+### `GET /logs/stats`
+
+Returns aggregated counts from the routing log grouped by `data_sensitivity` and `cloud_env`.
+
+```bash
+curl http://localhost:8000/logs/stats
+```
+
+**Response:**
+
+```json
+{
+  "total": 42,
+  "rejected_count": 2,
+  "by_sensitivity": {"public": 18, "phi_strict": 12, "internal": 12},
+  "by_cloud_env": {"on_prem": 14, "aws": 16, "gcp": 12}
+}
+```
+
+---
+
+### `GET /circuit-status`
+
+Returns the circuit breaker state for all registered servers: `CLOSED` (normal), `OPEN` (fast-failing), or `HALF_OPEN` (probing).
+
+```bash
+curl http://localhost:8000/circuit-status
+```
+
+**Response:**
+
+```json
+{
+  "servers": [
+    {
+      "server_id": "aws-sim",
+      "state": "CLOSED",
+      "consecutive_failures": 0,
+      "failure_threshold": 3,
+      "last_failure_time": null
+    }
+  ],
+  "collected_at": "2026-05-05T16:55:55Z"
+}
+```
+
+---
+
+### `GET /test-prompts`
+
+Returns fabricated sample prompts for each sensitivity tier, suitable for exercising the de-identification pipeline and routing logic from the dashboard. All PHI in `phi` and `phi_strict` tiers is entirely fabricated.
+
+```bash
+curl http://localhost:8000/test-prompts
+```
+
+---
+
+### `GET /health-check/{server_id}`
+
+Directly probes a server's health endpoint and returns the result with timing. Does **not** update the server's persisted status.
+
+```bash
+curl http://localhost:8000/health-check/aws-sim
+```
+
+**Response:**
+
+```json
+{
+  "server_id": "aws-sim",
+  "status": "healthy",
+  "latency_ms": 4.231,
+  "error": null,
+  "checked_at": "2026-05-05T16:55:55Z"
+}
+```
+
+---
+
+### `GET /server-logs/{server_id}`
+
+Returns routing log entries that were dispatched to a specific server, newest first.
+
+**Query parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `limit`   | int  | Max entries to return, 1–200 (default: 20) |
+
+```bash
+curl "http://localhost:8000/server-logs/on-prem-01?limit=5"
+```
+
+---
+
+### `POST /force-health-poll/{server_id}`
+
+Triggers an immediate health check and updates the server's persisted status. Use this to force a recovery check without waiting for the next background poll interval (default: 30 s).
+
+```bash
+curl -X POST http://localhost:8000/force-health-poll/gcp-sim
+```
+
+**Response:**
+
+```json
+{
+  "server_id": "gcp-sim",
+  "previous_status": "unavailable",
+  "new_status": "healthy",
+  "latency_ms": 3.812,
+  "polled_at": "2026-05-05T16:55:55Z"
 }
 ```
 
@@ -217,10 +520,10 @@ Requests are filtered and scored in two phases:
 
 The `PolicyEngine` eliminates servers that fail any of these checks:
 
-| Check           | Rule                                                                 |
-|-----------------|----------------------------------------------------------------------|
+| Check           | Rule |
+|-----------------|------|
 | Model support   | Server must list the requested `model_id` in its `supported_models` |
-| Sensitivity     | Server's `max_sensitivity` must be ≥ request's `data_sensitivity`   |
+| Sensitivity     | Server's `max_sensitivity` must be ≥ request's `data_sensitivity` |
 | BAA requirement | Requests with `sensitive`, `phi`, or `phi_strict` data require `has_baa=True` |
 | On-prem only    | `phi_strict` requests are restricted to `cloud_env=ON_PREM` servers |
 
@@ -230,13 +533,13 @@ A request is rejected with HTTP 503 if no server passes all four checks.
 
 Servers that pass Phase 1 are ranked by the chosen strategy:
 
-| Strategy            | Ranking criterion                                      |
-|---------------------|--------------------------------------------------------|
-| `compliance_first`  | Highest `max_sensitivity` clearance wins               |
-| `least_loaded`      | Lowest `current_load` wins                             |
+| Strategy            | Ranking criterion |
+|---------------------|-------------------|
+| `compliance_first`  | Highest `max_sensitivity` clearance wins |
+| `least_loaded`      | Lowest `current_load` wins |
 | `latency_optimized` | Lowest `p99_latency_ms` wins (measured from last 100 requests) |
-| `cost_optimized`    | Lowest `cost_per_token` wins                           |
-| `round_robin`       | Cycles through eligible servers in registration order  |
+| `cost_optimized`    | Lowest `cost_per_token` wins |
+| `round_robin`       | Cycles through eligible servers in registration order |
 
 ### Example: PHI_STRICT request
 
@@ -253,6 +556,103 @@ Phase 2 scoring:
 
 Result: routed to on-prem, PHI never leaves the compliant environment.
 ```
+
+---
+
+## Troubleshooting
+
+### `curl: (7) Failed to connect to localhost port 8000`
+
+The API server is not running. Start it with:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+uvicorn src.api.main:app --reload --port 8000
+```
+
+---
+
+### `healthy_server_count: 0` or backends showing unavailable
+
+The demo Ollama instances are not running. Start them:
+
+```bash
+bash scripts/start_demo.sh
+```
+
+If you see `Demo already running`, stop first:
+
+```bash
+bash scripts/stop_demo.sh && bash scripts/start_demo.sh
+```
+
+---
+
+### `ModuleNotFoundError` on startup
+
+Dependencies are not installed. Run:
+
+```bash
+pip install -r requirements.txt
+```
+
+If you have multiple Python versions, ensure you're using Python 3.11+:
+
+```bash
+python3 --version
+python3 -m pip install -r requirements.txt
+```
+
+---
+
+### `ollama pull tinyllama` hangs or fails
+
+- Ensure Ollama is running: open the Ollama app (macOS/Windows) or run `ollama serve` in a separate terminal (Linux).
+- Check your internet connection — the model download is ~600 MB.
+
+---
+
+### Redis warnings in server logs
+
+```
+cache: Redis unavailable at localhost:6379 — caching disabled
+```
+
+This is not an error — caching is disabled gracefully. To enable it, start Redis:
+
+```bash
+# macOS
+brew services start redis
+
+# Linux / Chromebook / WSL2
+sudo service redis-server start
+```
+
+---
+
+### Port already in use (`[Errno 98] Address already in use`)
+
+Another process is using port 8000 or one of the Ollama ports (11434–11436). Find and stop it:
+
+```bash
+# Find what's using port 8000
+lsof -i :8000
+
+# Kill by PID
+kill <PID>
+```
+
+---
+
+### On Chromebook: `bash: uvicorn: command not found`
+
+Add the local bin directory to your PATH:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add this line to `~/.bashrc` to make it permanent.
 
 ---
 
