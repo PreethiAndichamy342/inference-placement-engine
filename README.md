@@ -65,14 +65,12 @@ Each feature in this engine maps directly to concepts covered in these articles:
 
 | Feature | Article |
 |---------|---------|
-| HIPAA-aware routing — PHI detection, sensitivity tiers, BAA enforcement | [*Link to your Medium article*](#) |
-| p99 latency tracking and SLA-aware server filtering | [*Link to your Medium article*](#) |
-| Multi-cloud placement with compliance-first policy engine | [*Link to your Medium article*](#) |
-| Redis-backed inference result cache with PHI gate | [*Link to your Medium article*](#) |
-| Circuit breaker pattern for adapter fault tolerance | [*Link to your Medium article*](#) |
-| PHI de-identification pipeline with entity vault | [*Link to your Medium article*](#) |
-
-> Replace the placeholder links above with your published Medium article URLs.
+| HIPAA-aware routing — PHI detection, sensitivity tiers, BAA enforcement | [PHI Gate](https://preethiandichamy.medium.com/healthcare-call-center-ai-the-phi-gate-that-decides-what-leaves-and-what-never-should-95ed2dcb52fd) |
+| p99 latency tracking and SLA-aware server filtering | [P99 Latency](https://preethiandichamy.medium.com/route-to-cheapest-then-fastest-both-failed-here-is-what-was-missed-904d5d7957f6) |
+| Multi-cloud placement with compliance-first policy engine | [Placement Engine](https://preethiandichamy.medium.com/episode-2-the-placement-engine-e4ece0bad3b0) |
+| Redis-backed inference result cache with PHI gate | [System Overview](https://preethiandichamy.medium.com/healthcare-call-center-ai-designing-a-multi-cloud-inference-architecture-where-phi-never-moves-d997bdb3ed1f) |
+| Circuit breaker pattern for adapter fault tolerance | [Unified Compliance](https://preethiandichamy.medium.com/healthcare-call-center-ai-one-compliance-view-across-four-environments-that-never-stop-moving-e03eff5d955e) |
+| PHI de-identification pipeline with entity vault | [PHI Gate](https://preethiandichamy.medium.com/healthcare-call-center-ai-the-phi-gate-that-decides-what-leaves-and-what-never-should-95ed2dcb52fd) |
 
 ---
 
@@ -653,6 +651,36 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Add this line to `~/.bashrc` to make it permanent.
+
+---
+
+## License
+
+Copyright © 2026 Preethi Andichamy  
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) file.
+
+---
+
+## Citation
+
+If you use this work, please cite:
+
+```
+Andichamy, P. (2026). HIPAA-Aware Multi-Cloud Inference Placement Engine.
+GitHub: https://github.com/PreethiAndichamy342/inference-placement-engine
+```
+
+---
+
+## Medium Series
+
+1. [System Overview](https://preethiandichamy.medium.com/healthcare-call-center-ai-designing-a-multi-cloud-inference-architecture-where-phi-never-moves-d997bdb3ed1f)
+2. [Placement Engine](https://preethiandichamy.medium.com/episode-2-the-placement-engine-e4ece0bad3b0)
+3. [P99 Latency](https://preethiandichamy.medium.com/route-to-cheapest-then-fastest-both-failed-here-is-what-was-missed-904d5d7957f6)
+4. [PHI Gate](https://preethiandichamy.medium.com/healthcare-call-center-ai-the-phi-gate-that-decides-what-leaves-and-what-never-should-95ed2dcb52fd)
+5. [Kafka Failover](https://preethiandichamy.medium.com/healthcare-call-center-ai-the-message-queue-that-fails-over-without-anyone-noticing-c5afaa0dc1f7)
+6. [Unified Compliance](https://preethiandichamy.medium.com/healthcare-call-center-ai-one-compliance-view-across-four-environments-that-never-stop-moving-e03eff5d955e)
+7. [Design Retrospective](https://preethiandichamy.medium.com/healthcare-call-center-ai-what-we-would-build-differently-today-16340566eec3)
 
 ---
 

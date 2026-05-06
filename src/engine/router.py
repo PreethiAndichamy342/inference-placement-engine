@@ -1,3 +1,5 @@
+# Copyright 2026 Preethi Andichamy
+# Licensed under the Apache License, Version 2.0
 """
 Placement router for the multi-cloud healthcare inference engine.
 
